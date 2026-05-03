@@ -16,6 +16,16 @@ export type PageSize = {
 export type RenderPdfOptions = {
   targetLongEdge: number;
   onProgress?: (progress: ConversionProgress) => void;
+  signal?: AbortSignal;
+};
+
+const createAbortError = () =>
+  new DOMException("변환이 취소되었습니다.", "AbortError");
+
+const throwIfAborted = (signal?: AbortSignal) => {
+  if (signal?.aborted) {
+    throw createAbortError();
+  }
 };
 
 export const getScaleForLongEdge = (
@@ -52,9 +62,11 @@ const canvasToPngBlob = (canvas: HTMLCanvasElement): Promise<Blob> =>
 
 export const renderPdfToPngs = async (
   file: File,
-  { targetLongEdge, onProgress }: RenderPdfOptions,
+  { targetLongEdge, onProgress, signal }: RenderPdfOptions,
 ): Promise<RenderedPngPage[]> => {
+  throwIfAborted(signal);
   const data = await file.arrayBuffer();
+  throwIfAborted(signal);
   const loadingTask = pdfjsLib.getDocument({ data });
 
   const destroyLoadingTask = async () => {
@@ -62,14 +74,24 @@ export const renderPdfToPngs = async (
       await loadingTask.destroy();
     }
   };
+  const handleLoadingAbort = () => {
+    void destroyLoadingTask();
+  };
+  signal?.addEventListener("abort", handleLoadingAbort, { once: true });
 
   let doc: pdfjsLib.PDFDocumentProxy | null = null;
   try {
     doc = await loadingTask.promise;
   } catch (error) {
+    signal?.removeEventListener("abort", handleLoadingAbort);
+    if (signal?.aborted) {
+      throw createAbortError();
+    }
     await destroyLoadingTask();
     throw error;
   }
+  signal?.removeEventListener("abort", handleLoadingAbort);
+  throwIfAborted(signal);
 
   if (!doc) {
     await destroyLoadingTask();
@@ -80,11 +102,13 @@ export const renderPdfToPngs = async (
   const pages: RenderedPngPage[] = [];
   try {
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+      throwIfAborted(signal);
       let page: pdfjsLib.PDFPageProxy | null = null;
       let canvas: HTMLCanvasElement | null = null;
 
       try {
         page = await pdf.getPage(pageNumber);
+        throwIfAborted(signal);
         const unscaledViewport = page.getViewport({ scale: 1 });
         const scale = getScaleForLongEdge(
           {
@@ -109,9 +133,25 @@ export const renderPdfToPngs = async (
         context.fillStyle = "#ffffff";
         context.fillRect(0, 0, canvas.width, canvas.height);
 
-        await page.render({ canvasContext: context, viewport }).promise;
+        const renderTask = page.render({ canvasContext: context, viewport });
+        const handleRenderAbort = () => {
+          renderTask.cancel();
+        };
+        signal?.addEventListener("abort", handleRenderAbort, { once: true });
+
+        try {
+          await renderTask.promise;
+        } catch (error) {
+          if (signal?.aborted) {
+            throw createAbortError();
+          }
+          throw error;
+        } finally {
+          signal?.removeEventListener("abort", handleRenderAbort);
+        }
 
         const blob = await canvasToPngBlob(canvas);
+        throwIfAborted(signal);
         pages.push({
           pageIndex: pageNumber - 1,
           fileName: buildPngFileName(file.name, pageNumber - 1, pdf.numPages),

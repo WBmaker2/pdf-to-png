@@ -75,6 +75,17 @@ input {
   width: 100%;
 }
 
+.status-message {
+  margin: 14px 0 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ghost-text);
+  padding: 10px 12px;
+  font-size: 0.95rem;
+  box-shadow: 0 2px 14px rgba(9, 20, 32, 0.04);
+}
+
 .eyebrow {
   margin: 0;
   color: var(--primary);

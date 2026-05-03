@@ -15,16 +15,25 @@ export default function App() {
   const [progress, setProgress] = useState<ConversionProgress | null>(null);
   const [statusMessage, setStatusMessage] = useState("PDF 파일을 선택해 주세요.");
   const conversionIdRef = useRef(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  function cancelActiveConversion() {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+  }
 
   function handleSelectFile(file: File) {
+    cancelActiveConversion();
     conversionIdRef.current += 1;
     setSelectedFile(file);
     setPages([]);
+    setIsConverting(false);
     setProgress(null);
     setStatusMessage(`${file.name} 파일이 선택되었습니다.`);
   }
 
   function handleReset() {
+    cancelActiveConversion();
     conversionIdRef.current += 1;
     setSelectedFile(null);
     setPages([]);
@@ -43,11 +52,15 @@ export default function App() {
     setPages([]);
     const conversionId = conversionIdRef.current + 1;
     conversionIdRef.current = conversionId;
+    const abortController = new AbortController();
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = abortController;
     setStatusMessage("PDF를 PNG로 변환하고 있습니다.");
 
     try {
       const renderedPages = await renderPdfToPngs(selectedFile, {
         targetLongEdge: TARGET_LONG_EDGE,
+        signal: abortController.signal,
         onProgress: (nextProgress) => {
           if (conversionIdRef.current !== conversionId) {
             return;
@@ -78,6 +91,9 @@ export default function App() {
       );
     } finally {
       if (conversionIdRef.current === conversionId) {
+        if (abortControllerRef.current === abortController) {
+          abortControllerRef.current = null;
+        }
         setIsConverting(false);
       }
     }
@@ -128,7 +144,7 @@ export default function App() {
         <ResultList pages={pages} onDownload={handleDownload} />
       </section>
 
-      <p className="sr-only" role="status" aria-live="polite">
+      <p className="status-message" role="status" aria-live="polite">
         {statusMessage}
       </p>
     </main>

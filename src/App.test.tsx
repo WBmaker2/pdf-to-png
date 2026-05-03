@@ -112,6 +112,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "PNG로 변환하기" }));
     await user.click(screen.getByRole("button", { name: "초기화" }));
 
+    expect(mockRenderPdfToPngs.mock.calls[0][1].signal?.aborted).toBe(true);
     resolveConversion(makePngPages());
 
     await waitFor(() => {
@@ -134,7 +135,9 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "ZIP 다운로드" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("status")).toHaveTextContent("ZIP 생성에 실패했습니다.");
+      const status = screen.getByRole("status");
+      expect(status).toHaveTextContent("ZIP 생성에 실패했습니다.");
+      expect(status).toBeVisible();
     });
   });
 
@@ -173,9 +176,9 @@ describe("App", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("status")).toHaveTextContent(
-        "PDF 파일만 선택할 수 있습니다.",
-      );
+      const status = screen.getByRole("status");
+      expect(status).toHaveTextContent("PDF 파일만 선택할 수 있습니다.");
+      expect(status).toBeVisible();
     });
   });
 });

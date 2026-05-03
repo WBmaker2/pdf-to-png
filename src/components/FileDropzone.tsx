@@ -37,7 +37,7 @@ export function FileDropzone({
         <h2>PDF 파일 선택</h2>
         <p>파일은 브라우저 안에서만 처리됩니다.</p>
       </div>
-      <label className="file-button">
+      <label className={`file-button${isDisabled ? " is-disabled" : ""}`}>
         PDF 파일 선택
         <input
           aria-label="PDF 파일 선택"

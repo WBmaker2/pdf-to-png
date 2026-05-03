@@ -12,11 +12,17 @@
 body {
   margin: 0;
   min-height: 100vh;
+  min-width: 320px;
   background:
     linear-gradient(140deg, rgba(31, 87, 83, 0.08) 0%, transparent 42%),
     linear-gradient(300deg, rgba(82, 97, 95, 0.09) 0%, transparent 42%),
     #f7f5ef;
   color: #172026;
+}
+
+button,
+input {
+  font: inherit;
 }
 
 #root {
@@ -38,6 +44,8 @@ body {
 .eyebrow {
   margin: 0;
   color: #2a615d;
+  font-size: 0.92rem;
+  font-weight: 700;
 }
 
 h1 {

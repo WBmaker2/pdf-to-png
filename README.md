@@ -2,6 +2,10 @@
 
 PDF 파일을 브라우저에서 1080p PNG 파일로 변환하는 웹앱입니다.
 
+## 배포
+
+- GitHub Pages: https://wbmaker2.github.io/pdf-to-png/
+
 ## 기능
 
 - PDF 1개를 선택해 각 페이지를 PNG로 변환합니다.

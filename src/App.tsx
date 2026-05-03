@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ConversionPanel } from "./components/ConversionPanel";
 import { FileDropzone } from "./components/FileDropzone";
 import { ResultList } from "./components/ResultList";
@@ -14,8 +14,10 @@ export default function App() {
   const [isConverting, setIsConverting] = useState(false);
   const [progress, setProgress] = useState<ConversionProgress | null>(null);
   const [statusMessage, setStatusMessage] = useState("PDF 파일을 선택해 주세요.");
+  const conversionIdRef = useRef(0);
 
   function handleSelectFile(file: File) {
+    conversionIdRef.current += 1;
     setSelectedFile(file);
     setPages([]);
     setProgress(null);
@@ -23,8 +25,10 @@ export default function App() {
   }
 
   function handleReset() {
+    conversionIdRef.current += 1;
     setSelectedFile(null);
     setPages([]);
+    setIsConverting(false);
     setProgress(null);
     setStatusMessage("PDF 파일을 선택해 주세요.");
   }
@@ -37,21 +41,43 @@ export default function App() {
 
     setIsConverting(true);
     setPages([]);
+    const conversionId = conversionIdRef.current + 1;
+    conversionIdRef.current = conversionId;
     setStatusMessage("PDF를 PNG로 변환하고 있습니다.");
 
     try {
       const renderedPages = await renderPdfToPngs(selectedFile, {
         targetLongEdge: TARGET_LONG_EDGE,
-        onProgress: setProgress,
+        onProgress: (nextProgress) => {
+          if (conversionIdRef.current !== conversionId) {
+            return;
+          }
+
+          setProgress(nextProgress);
+          setStatusMessage(
+            `${nextProgress.currentPage} / ${nextProgress.totalPages} 페이지 변환 중`,
+          );
+        },
       });
+
+      if (conversionIdRef.current !== conversionId) {
+        return;
+      }
+
       setPages(renderedPages);
       setStatusMessage(`${renderedPages.length}개의 PNG 파일이 준비되었습니다.`);
     } catch (error) {
+      if (conversionIdRef.current !== conversionId) {
+        return;
+      }
+
       setStatusMessage(
         error instanceof Error ? error.message : "변환 중 오류가 발생했습니다.",
       );
     } finally {
-      setIsConverting(false);
+      if (conversionIdRef.current === conversionId) {
+        setIsConverting(false);
+      }
     }
   }
 
@@ -61,9 +87,15 @@ export default function App() {
       return;
     }
 
-    const output = await buildDownloadBlob(selectedFile.name, pages);
-    downloadBlob(output);
-    setStatusMessage(`${output.fileName} 다운로드를 시작했습니다.`);
+    try {
+      const output = await buildDownloadBlob(selectedFile.name, pages);
+      downloadBlob(output);
+      setStatusMessage(`${output.fileName} 다운로드를 시작했습니다.`);
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error ? error.message : "다운로드 중 오류가 발생했습니다.",
+      );
+    }
   }
 
   return (
@@ -80,6 +112,7 @@ export default function App() {
       <section className="workspace" aria-label="PDF 변환 작업">
         <FileDropzone
           selectedFile={selectedFile}
+          isDisabled={isConverting}
           onSelectFile={handleSelectFile}
           onRejectFile={setStatusMessage}
         />

@@ -94,6 +94,71 @@ describe("App", () => {
     );
   });
 
+  it("변환 중 초기화하면 이전 변환 결과를 무시한다", async () => {
+    const user = userEvent.setup();
+    let resolveConversion: (pages: ReturnType<typeof makePngPages>) => void = () => {
+      throw new Error("conversion resolver was not set");
+    };
+
+    mockRenderPdfToPngs.mockReturnValue(
+      new Promise((resolve) => {
+        resolveConversion = resolve;
+      }),
+    );
+
+    render(<App />);
+
+    await user.upload(screen.getByLabelText("PDF 파일 선택"), createPdf());
+    await user.click(screen.getByRole("button", { name: "PNG로 변환하기" }));
+    await user.click(screen.getByRole("button", { name: "초기화" }));
+
+    resolveConversion(makePngPages());
+
+    await waitFor(() => {
+      expect(screen.queryByText("수업자료-00.png")).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("PDF 파일을 선택해 주세요.");
+  });
+
+  it("다운로드 오류를 상태 메시지로 표시한다", async () => {
+    const user = userEvent.setup();
+    const pages = makePngPages();
+    mockRenderPdfToPngs.mockResolvedValue(pages);
+    mockBuildDownloadBlob.mockRejectedValue(new Error("ZIP 생성에 실패했습니다."));
+
+    render(<App />);
+
+    await user.upload(screen.getByLabelText("PDF 파일 선택"), createPdf());
+    await user.click(screen.getByRole("button", { name: "PNG로 변환하기" }));
+    await screen.findByText("수업자료-00.png");
+    await user.click(screen.getByRole("button", { name: "ZIP 다운로드" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("ZIP 생성에 실패했습니다.");
+    });
+  });
+
+  it("변환 진행 상황을 상태 메시지로 알린다", async () => {
+    const user = userEvent.setup();
+    const pages = makePngPages();
+    mockRenderPdfToPngs.mockImplementation(async (_file, options) => {
+      options.onProgress?.({ currentPage: 1, totalPages: 2 });
+      return pages;
+    });
+
+    render(<App />);
+
+    await user.upload(screen.getByLabelText("PDF 파일 선택"), createPdf());
+    await user.click(screen.getByRole("button", { name: "PNG로 변환하기" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "2개의 PNG 파일이 준비되었습니다.",
+      );
+    });
+    expect(screen.getByText("수업자료-00.png")).toBeInTheDocument();
+  });
+
   it("PDF가 아닌 파일을 업로드하면 상태 메시지를 표시한다", async () => {
     const user = userEvent.setup({ applyAccept: false });
 

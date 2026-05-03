@@ -2,6 +2,7 @@ import { FileUp } from "lucide-react";
 
 type FileDropzoneProps = {
   selectedFile: File | null;
+  isDisabled?: boolean;
   onSelectFile: (file: File) => void;
   onRejectFile: (message: string) => void;
 };
@@ -12,6 +13,7 @@ function isPdf(file: File) {
 
 export function FileDropzone({
   selectedFile,
+  isDisabled = false,
   onSelectFile,
   onRejectFile,
 }: FileDropzoneProps) {
@@ -40,8 +42,12 @@ export function FileDropzone({
         <input
           aria-label="PDF 파일 선택"
           accept="application/pdf,.pdf"
+          disabled={isDisabled}
           type="file"
-          onChange={(event) => handleFile(event.currentTarget.files?.[0])}
+          onChange={(event) => {
+            handleFile(event.currentTarget.files?.[0]);
+            event.currentTarget.value = "";
+          }}
         />
       </label>
       {selectedFile ? <p className="selected-file">{selectedFile.name}</p> : null}

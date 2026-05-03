@@ -21,4 +21,31 @@ describe("getScaleForLongEdge", () => {
       /targetLongEdge/,
     );
   });
+
+  it("throws when targetLongEdge is NaN", () => {
+    expect(() =>
+      getScaleForLongEdge({ width: 612, height: 792 }, Number.NaN),
+    ).toThrow(/targetLongEdge/);
+  });
+
+  it("throws when targetLongEdge is Infinity", () => {
+    expect(() =>
+      getScaleForLongEdge({ width: 612, height: 792 }, Number.POSITIVE_INFINITY),
+    ).toThrow(/targetLongEdge/);
+  });
+
+  it("throws when page width is invalid", () => {
+    expect(() =>
+      getScaleForLongEdge(
+        { width: Number.NaN, height: 792 },
+        1080,
+      ),
+    ).toThrow(/pageSize/);
+  });
+
+  it("throws when page height is non-positive", () => {
+    expect(() =>
+      getScaleForLongEdge({ width: 612, height: 0 }, 1080),
+    ).toThrow(/pageSize/);
+  });
 });

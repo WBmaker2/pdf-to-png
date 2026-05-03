@@ -22,8 +22,17 @@ export const getScaleForLongEdge = (
   pageSize: PageSize,
   targetLongEdge: number,
 ): number => {
-  if (targetLongEdge <= 0) {
+  if (!Number.isFinite(targetLongEdge) || targetLongEdge <= 0) {
     throw new Error("targetLongEdge must be greater than 0");
+  }
+
+  if (
+    !Number.isFinite(pageSize.width) ||
+    !Number.isFinite(pageSize.height) ||
+    pageSize.width <= 0 ||
+    pageSize.height <= 0
+  ) {
+    throw new Error("pageSize must have finite, positive width and height");
   }
 
   return targetLongEdge / Math.max(pageSize.width, pageSize.height);
@@ -46,48 +55,86 @@ export const renderPdfToPngs = async (
   { targetLongEdge, onProgress }: RenderPdfOptions,
 ): Promise<RenderedPngPage[]> => {
   const data = await file.arrayBuffer();
-  const doc = await pdfjsLib.getDocument({ data }).promise;
+  const loadingTask = pdfjsLib.getDocument({ data });
 
-  const pages: RenderedPngPage[] = [];
-
-  for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
-    const page = await doc.getPage(pageNumber);
-    const unscaledViewport = page.getViewport({ scale: 1 });
-    const scale = getScaleForLongEdge(
-      {
-        width: unscaledViewport.width,
-        height: unscaledViewport.height,
-      },
-      targetLongEdge,
-    );
-    const viewport = page.getViewport({ scale });
-    const canvas = document.createElement("canvas");
-    const context = canvas.getContext("2d", { alpha: false });
-
-    if (!context) {
-      throw new Error("캔버스 렌더링 컨텍스트를 만들 수 없습니다.");
+  const destroyLoadingTask = async () => {
+    if (typeof loadingTask.destroy === "function") {
+      await loadingTask.destroy();
     }
+  };
 
-    canvas.width = Math.round(viewport.width);
-    canvas.height = Math.round(viewport.height);
+  let doc: pdfjsLib.PDFDocumentProxy | null = null;
+  try {
+    doc = await loadingTask.promise;
+  } catch (error) {
+    await destroyLoadingTask();
+    throw error;
+  }
 
-    context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, canvas.width, canvas.height);
+  if (!doc) {
+    await destroyLoadingTask();
+    throw new Error("pdf 문서 로드에 실패했습니다.");
+  }
 
-    await page.render({ canvasContext: context, viewport }).promise;
+  const pdf = doc;
+  const pages: RenderedPngPage[] = [];
+  try {
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+      let page: pdfjsLib.PDFPageProxy | null = null;
+      let canvas: HTMLCanvasElement | null = null;
 
-    const blob = await canvasToPngBlob(canvas);
-    pages.push({
-      pageIndex: pageNumber - 1,
-      fileName: buildPngFileName(file.name, pageNumber - 1, doc.numPages),
-      blob,
-      width: canvas.width,
-      height: canvas.height,
-    });
-    onProgress?.({
-      currentPage: pageNumber,
-      totalPages: doc.numPages,
-    });
+      try {
+        page = await pdf.getPage(pageNumber);
+        const unscaledViewport = page.getViewport({ scale: 1 });
+        const scale = getScaleForLongEdge(
+          {
+            width: unscaledViewport.width,
+            height: unscaledViewport.height,
+          },
+          targetLongEdge,
+        );
+        const viewport = page.getViewport({ scale });
+        canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d", { alpha: false });
+
+        if (!context) {
+          throw new Error("캔버스 렌더링 컨텍스트를 만들 수 없습니다.");
+        }
+
+        const width = Math.round(viewport.width);
+        const height = Math.round(viewport.height);
+        canvas.width = width;
+        canvas.height = height;
+
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+
+        await page.render({ canvasContext: context, viewport }).promise;
+
+        const blob = await canvasToPngBlob(canvas);
+        pages.push({
+          pageIndex: pageNumber - 1,
+          fileName: buildPngFileName(file.name, pageNumber - 1, pdf.numPages),
+          blob,
+          width,
+          height,
+        });
+        onProgress?.({
+          currentPage: pageNumber,
+          totalPages: pdf.numPages,
+        });
+      } finally {
+        if (typeof page?.cleanup === "function") {
+          page.cleanup();
+        }
+        if (canvas) {
+          canvas.width = 0;
+          canvas.height = 0;
+        }
+      }
+    }
+  } finally {
+    await pdf.destroy();
   }
 
   return pages;

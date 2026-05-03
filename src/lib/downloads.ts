@@ -40,12 +40,15 @@ export const downloadBlob = (download: DownloadBlob): void => {
   const objectUrl = URL.createObjectURL(download.blob);
   const link = document.createElement("a");
 
-  link.href = objectUrl;
-  link.download = download.fileName;
-  link.rel = "noopener";
-  link.style.display = "none";
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(objectUrl);
+  try {
+    link.href = objectUrl;
+    link.download = download.fileName;
+    link.rel = "noopener";
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+  } finally {
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+  }
 };

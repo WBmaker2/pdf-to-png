@@ -1,13 +1,10 @@
 const INVALID_FILENAME_CHAR_PATTERN =
   /[\x00-\x1f\x7f-\x9f<>:"/\\|?*]/g;
 
-const CONTROL_CHARS_PATTERN = /[\x00-\x1f\x7f-\x9f]/g;
-
 export const safeBaseName = (fileName: string): string => {
   const withoutPath = fileName.replace(/\\/g, "/").split("/").pop() ?? "";
-  const withoutPdf = withoutPath.replace(/\.pdf$/i, "");
+  const withoutPdf = withoutPath.trim().replace(/\.pdf$/i, "");
   const sanitized = withoutPdf
-    .replace(CONTROL_CHARS_PATTERN, "-")
     .replace(INVALID_FILENAME_CHAR_PATTERN, "-")
     .replace(/\s+/g, " ")
     .trim();

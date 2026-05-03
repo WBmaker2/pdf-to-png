@@ -12,6 +12,25 @@ describe("file name utilities", () => {
     expect(safeBaseName("Lesson.PDF")).toBe("Lesson");
   });
 
+  it("removes path separators before sanitizing", () => {
+    expect(safeBaseName("/tmp/uploads/수업자료.pdf")).toBe("수업자료");
+    expect(safeBaseName("C:\\Users\\teacher\\Lesson.PDF")).toBe("Lesson");
+  });
+
+  it("replaces invalid filename characters and control characters", () => {
+    expect(safeBaseName('bad<>:"|?*.pdf')).toBe("bad-------");
+    expect(safeBaseName("bad\u0000name.pdf")).toBe("bad-name");
+  });
+
+  it("normalizes whitespace", () => {
+    expect(safeBaseName("  Unit   1   Review.pdf  ")).toBe("Unit 1 Review");
+  });
+
+  it("falls back to document when the base name is empty", () => {
+    expect(safeBaseName("   .pdf   ")).toBe("document");
+    expect(safeBaseName("///")).toBe("document");
+  });
+
   it("calculates page index width", () => {
     expect(pageIndexWidth(1)).toBe(2);
     expect(pageIndexWidth(12)).toBe(2);

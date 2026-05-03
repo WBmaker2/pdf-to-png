@@ -65,12 +65,14 @@ export default function App() {
       }
 
       setPages(renderedPages);
+      setProgress(null);
       setStatusMessage(`${renderedPages.length}개의 PNG 파일이 준비되었습니다.`);
     } catch (error) {
       if (conversionIdRef.current !== conversionId) {
         return;
       }
 
+      setProgress(null);
       setStatusMessage(
         error instanceof Error ? error.message : "변환 중 오류가 발생했습니다.",
       );

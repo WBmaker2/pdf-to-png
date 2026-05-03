@@ -157,6 +157,7 @@ describe("App", () => {
       );
     });
     expect(screen.getByText("수업자료-00.png")).toBeInTheDocument();
+    expect(screen.getByText("긴 변 1080px PNG로 변환합니다.")).toBeInTheDocument();
   });
 
   it("PDF가 아닌 파일을 업로드하면 상태 메시지를 표시한다", async () => {

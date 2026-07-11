@@ -28,5 +28,5 @@ export const buildPngFileName = (
 
 export const buildZipFileName = (originalFileName: string): string => {
   const baseName = safeBaseName(originalFileName);
-  return `${baseName}-png-1080p.zip`;
+  return `${baseName}-png-1080px.zip`;
 };

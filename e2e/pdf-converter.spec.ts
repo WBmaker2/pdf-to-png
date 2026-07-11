@@ -35,6 +35,7 @@ test("converts a real three-page PDF and downloads its PNG ZIP", async ({ page }
   await expect(page.getByText("sample-00.png")).toBeVisible();
   await expect(page.getByText("sample-01.png")).toBeVisible();
   await expect(page.getByText("sample-02.png")).toBeVisible();
+  await expect(page.getByAltText("sample-00.png 미리보기")).toBeVisible();
 
   const [download] = await Promise.all([
     page.waitForEvent("download"),
@@ -42,7 +43,7 @@ test("converts a real three-page PDF and downloads its PNG ZIP", async ({ page }
   ]);
   await download.path();
   expect(await download.failure()).toBeNull();
-  expect(download.suggestedFilename()).toBe("sample-png-1080p.zip");
+  expect(download.suggestedFilename()).toBe("sample-png-1080px.zip");
   expect(consoleErrors).toEqual([]);
   expect(pageErrors).toEqual([]);
 });
@@ -51,6 +52,9 @@ test("keeps the converter within a mobile viewport", async ({ page }) => {
   const { consoleErrors, pageErrors } = collectPageErrors(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
+
+  await expect(page.getByRole("heading", { name: "PDF PNG 변환기" })).toBeVisible();
+  await expect(page.getByText("50MB 이하 · 최대 50페이지")).toBeVisible();
 
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),

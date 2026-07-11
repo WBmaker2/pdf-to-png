@@ -113,7 +113,7 @@ describe("download packager", () => {
     });
     const result = await resultPromise;
 
-    expect(result.fileName).toBe("자료-png-1080p.zip");
+    expect(result.fileName).toBe("자료-png-1080px.zip");
     expect(result.blob.type).toBe("application/zip");
     expect(worker.postMessage).toHaveBeenCalledWith({ type: "build", pages });
     expect(worker.terminate).toHaveBeenCalledTimes(1);

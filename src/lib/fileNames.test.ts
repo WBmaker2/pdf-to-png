@@ -44,6 +44,6 @@ describe("file name utilities", () => {
   });
 
   it("builds zip file name", () => {
-    expect(buildZipFileName("수업자료.pdf")).toBe("수업자료-png-1080p.zip");
+    expect(buildZipFileName("수업자료.pdf")).toBe("수업자료-png-1080px.zip");
   });
 });

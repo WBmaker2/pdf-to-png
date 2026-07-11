@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { ConversionPanel } from "./components/ConversionPanel";
 import { FileDropzone } from "./components/FileDropzone";
 import { ResultList } from "./components/ResultList";
+import { StatusNotice, type StatusTone } from "./components/StatusNotice";
 import { renderPdfToPngs } from "./lib/pdfRender";
 import { buildDownloadBlob, downloadBlob } from "./lib/downloads";
 import {
@@ -12,14 +13,26 @@ import type { ConversionProgress, RenderedPngPage } from "./types/conversion";
 
 const TARGET_LONG_EDGE = 1080;
 
+type StatusState = {
+  tone: StatusTone;
+  message: string;
+};
+
+const isAbortError = (error: unknown): boolean =>
+  typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";
+
 export default function App() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [pages, setPages] = useState<RenderedPngPage[]>([]);
   const [isConverting, setIsConverting] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [progress, setProgress] = useState<ConversionProgress | null>(null);
-  const [statusMessage, setStatusMessage] = useState("PDF 파일을 선택해 주세요.");
+  const [status, setStatus] = useState<StatusState | null>({
+    tone: "info",
+    message: "PDF 파일을 선택해 주세요.",
+  });
   const [validationResetId, setValidationResetId] = useState(0);
   const conversionIdRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -47,7 +60,7 @@ export default function App() {
     setPages([]);
     setIsConverting(false);
     setProgress(null);
-    setStatusMessage(`${file.name} 파일이 선택되었습니다.`);
+    setStatus({ tone: "info", message: `${file.name} 파일이 선택되었습니다.` });
   }
 
   function handleReset() {
@@ -58,24 +71,26 @@ export default function App() {
     setSelectedFile(null);
     setPages([]);
     setIsConverting(false);
+    setIsValidating(false);
     setProgress(null);
-    setStatusMessage("PDF 파일을 선택해 주세요.");
+    setStatus({ tone: "info", message: "PDF 파일을 선택해 주세요." });
   }
 
   async function handleConvert() {
     if (!selectedFile) {
-      setStatusMessage("먼저 PDF 파일을 선택해 주세요.");
+      setStatus({ tone: "error", message: "먼저 PDF 파일을 선택해 주세요." });
       return;
     }
 
     setIsConverting(true);
     setPages([]);
+    setProgress(null);
     const conversionId = conversionIdRef.current + 1;
     conversionIdRef.current = conversionId;
     const abortController = new AbortController();
     abortControllerRef.current?.abort();
     abortControllerRef.current = abortController;
-    setStatusMessage("PDF를 PNG로 변환하고 있습니다.");
+    setStatus({ tone: "info", message: "PDF를 PNG로 변환하고 있습니다." });
 
     try {
       const renderedPages = await renderPdfToPngs(selectedFile, {
@@ -87,9 +102,10 @@ export default function App() {
           }
 
           setProgress(nextProgress);
-          setStatusMessage(
-            `${nextProgress.currentPage} / ${nextProgress.totalPages} 페이지 변환 중`,
-          );
+          setStatus({
+            tone: "info",
+            message: `${nextProgress.currentPage} / ${nextProgress.totalPages} 페이지 변환 중`,
+          });
         },
       });
 
@@ -99,14 +115,17 @@ export default function App() {
 
       setPages(renderedPages);
       setProgress(null);
-      setStatusMessage(`${renderedPages.length}개의 PNG 파일이 준비되었습니다.`);
+      setStatus(null);
     } catch (error) {
       if (conversionIdRef.current !== conversionId) {
         return;
       }
 
       setProgress(null);
-      setStatusMessage(getConversionErrorMessage(error));
+      setStatus({
+        tone: isAbortError(error) ? "info" : "error",
+        message: getConversionErrorMessage(error),
+      });
     } finally {
       if (conversionIdRef.current === conversionId) {
         if (abortControllerRef.current === abortController) {
@@ -119,7 +138,7 @@ export default function App() {
 
   async function handleDownload() {
     if (!selectedFile || pages.length === 0) {
-      setStatusMessage("다운로드할 PNG가 없습니다.");
+      setStatus({ tone: "error", message: "다운로드할 PNG가 없습니다." });
       return;
     }
 
@@ -133,7 +152,7 @@ export default function App() {
     downloadAbortControllerRef.current = abortController;
     setIsDownloading(true);
     setDownloadProgress(0);
-    setStatusMessage("ZIP 파일을 생성하고 있습니다.");
+    setStatus({ tone: "info", message: "ZIP 파일을 생성하고 있습니다." });
 
     try {
       const output = await buildDownloadBlob(selectedFile.name, pages, {
@@ -150,13 +169,16 @@ export default function App() {
       }
 
       downloadBlob(output);
-      setStatusMessage(`${output.fileName} 다운로드를 시작했습니다.`);
+      setStatus({ tone: "info", message: `${output.fileName} 다운로드를 시작했습니다.` });
     } catch (error) {
       if (downloadIdRef.current !== downloadId) {
         return;
       }
 
-      setStatusMessage(getDownloadErrorMessage(error));
+      setStatus({
+        tone: isAbortError(error) ? "info" : "error",
+        message: getDownloadErrorMessage(error),
+      });
     } finally {
       if (downloadIdRef.current === downloadId) {
         if (downloadAbortControllerRef.current === abortController) {
@@ -168,29 +190,32 @@ export default function App() {
     }
   }
 
+  const canReset = Boolean(
+    selectedFile || pages.length > 0 || isConverting || isDownloading || isValidating,
+  );
+
   return (
     <main className="app-shell">
-      <section className="hero-panel" aria-labelledby="app-title">
-        <p className="eyebrow">브라우저 안에서 변환</p>
-        <h1 id="app-title">PDF를 1080p PNG로 변환</h1>
-        <p className="hero-copy">
-          PDF 파일을 선택하면 각 페이지를 PNG로 만들고, 여러 장이면 ZIP으로 묶어
-          다운로드합니다.
-        </p>
-      </section>
+      <header className="app-header">
+        <h1 id="app-title">PDF PNG 변환기</h1>
+        <p>긴 변 1080px · 브라우저 내 처리</p>
+      </header>
 
-      <section className="workspace" aria-label="PDF 변환 작업">
+      <section className="converter-tool" aria-labelledby="app-title" aria-label="PDF 변환 작업">
         <FileDropzone
           selectedFile={selectedFile}
           isDisabled={isConverting}
           validationResetId={validationResetId}
           onSelectFile={handleSelectFile}
-          onRejectFile={setStatusMessage}
+          onRejectFile={(message) => setStatus({ tone: "error", message })}
+          onValidationChange={setIsValidating}
         />
         <ConversionPanel
           selectedFile={selectedFile}
           isConverting={isConverting}
+          isDownloading={isDownloading}
           progress={progress}
+          canReset={canReset}
           onConvert={handleConvert}
           onReset={handleReset}
         />
@@ -200,11 +225,8 @@ export default function App() {
           downloadProgress={downloadProgress}
           onDownload={handleDownload}
         />
+        {status ? <StatusNotice tone={status.tone} message={status.message} /> : null}
       </section>
-
-      <p className="status-message" role="status" aria-live="polite">
-        {statusMessage}
-      </p>
     </main>
   );
 }

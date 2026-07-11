@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./lib/pdfRender", () => ({ renderPdfToPngs: vi.fn() }));
 vi.mock("./lib/downloads", () => ({
@@ -49,6 +49,10 @@ const mockRenderPdfToPngs = vi.mocked(renderPdfToPngs);
 const mockBuildDownloadBlob = vi.mocked(buildDownloadBlob);
 const mockDownloadBlob = vi.mocked(downloadBlob);
 const mockValidatePdfFile = vi.mocked(validatePdfFile);
+const originalCreateObjectURL = URL.createObjectURL;
+const originalRevokeObjectURL = URL.revokeObjectURL;
+const defaultCreateObjectURL = vi.fn(() => "blob:preview-default");
+const defaultRevokeObjectURL = vi.fn();
 
 const createPdf = () =>
   new File(["%PDF-1.7"], "수업자료.pdf", {
@@ -81,6 +85,16 @@ describe("App", () => {
     mockBuildDownloadBlob.mockReset();
     mockDownloadBlob.mockReset();
     mockValidatePdfFile.mockReset();
+    defaultCreateObjectURL.mockClear();
+    defaultRevokeObjectURL.mockClear();
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: defaultCreateObjectURL,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: defaultRevokeObjectURL,
+    });
     mockValidatePdfFile.mockImplementation(async (file) => {
       const { validatePdfFile: actualValidatePdfFile } = await vi.importActual<
         typeof import("./lib/pdfValidation")
@@ -92,6 +106,17 @@ describe("App", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterAll(() => {
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: originalCreateObjectURL,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: originalRevokeObjectURL,
+    });
   });
 
   it("선택한 PDF를 2페이지 PNG로 변환한다", async () => {
@@ -120,7 +145,7 @@ describe("App", () => {
     const pages = makePngPages();
     mockRenderPdfToPngs.mockResolvedValue(pages);
     mockBuildDownloadBlob.mockResolvedValue({
-      fileName: "수업자료-png-1080p.zip",
+      fileName: "수업자료-png-1080px.zip",
       blob: new Blob(["zip-data"], { type: "application/zip" }),
     });
 
@@ -142,7 +167,7 @@ describe("App", () => {
     );
     expect(mockDownloadBlob).toHaveBeenCalledWith(
       expect.objectContaining({
-        fileName: "수업자료-png-1080p.zip",
+        fileName: "수업자료-png-1080px.zip",
       }),
     );
   });
@@ -189,7 +214,7 @@ describe("App", () => {
     ).toHaveAttribute("max", "100");
 
     resolveDownload({
-      fileName: "수업자료-png-1080p.zip",
+      fileName: "수업자료-png-1080px.zip",
       blob: new Blob(["zip-data"], { type: "application/zip" }),
     });
 
@@ -214,7 +239,7 @@ describe("App", () => {
 
     await user.upload(screen.getByLabelText("PDF 파일 선택"), createPdf());
     await user.click(screen.getByRole("button", { name: "PNG로 변환하기" }));
-    await user.click(screen.getByRole("button", { name: "초기화" }));
+    await user.click(screen.getByRole("button", { name: "변환 취소" }));
 
     expect(mockRenderPdfToPngs.mock.calls[0][1].signal?.aborted).toBe(true);
     resolveConversion(makePngPages());
@@ -245,26 +270,128 @@ describe("App", () => {
     });
   });
 
-  it("변환 진행 상황을 상태 메시지로 알린다", async () => {
+  it("변환 진행 상황을 native progress로 알린다", async () => {
     const user = userEvent.setup();
     const pages = makePngPages();
-    mockRenderPdfToPngs.mockImplementation(async (_file, options) => {
-      options.onProgress?.({ currentPage: 1, totalPages: 2 });
-      return pages;
-    });
+    let resolveConversion: (pages: ReturnType<typeof makePngPages>) => void = () => {
+      throw new Error("conversion resolver was not set");
+    };
+    mockRenderPdfToPngs.mockImplementation(
+      (_file, options) =>
+        new Promise((resolve) => {
+          resolveConversion = resolve;
+          options.onProgress?.({ currentPage: 1, totalPages: 2 });
+        }),
+    );
 
     render(<App />);
 
     await user.upload(screen.getByLabelText("PDF 파일 선택"), createPdf());
     await user.click(screen.getByRole("button", { name: "PNG로 변환하기" }));
 
-    await waitFor(() => {
-      expect(screen.getByRole("status")).toHaveTextContent(
-        "2개의 PNG 파일이 준비되었습니다.",
-      );
+    expect(screen.getByRole("progressbar", { name: "PDF 변환 진행률" })).toHaveAttribute(
+      "aria-valuenow",
+      "1",
+    );
+    expect(screen.getByLabelText("변환 설정")).toHaveAttribute("aria-busy", "true");
+
+    resolveConversion(pages);
+    await screen.findByText("수업자료-00.png");
+    expect(screen.queryByText(/\b1080p\b/)).not.toBeInTheDocument();
+  });
+
+  it("초기화 전에는 파일이나 작업이 없으면 비활성화한다", () => {
+    render(<App />);
+
+    expect(screen.getByRole("button", { name: "초기화" })).toBeDisabled();
+    expect(screen.getByText(/50MB 이하 · 최대 50페이지/)).toBeVisible();
+  });
+
+  it("유효한 PDF를 드롭하면 검증 후 파일 메타데이터를 표시한다", async () => {
+    render(<App />);
+
+    fireEvent.drop(screen.getByLabelText("PDF 업로드"), {
+      dataTransfer: {
+        files: [createPdf()],
+        types: ["Files"],
+      },
     });
-    expect(screen.getByText("수업자료-00.png")).toBeInTheDocument();
-    expect(screen.getByText("긴 변 1080px PNG로 변환합니다.")).toBeInTheDocument();
+
+    expect(await screen.findByText("수업자료.pdf")).toBeVisible();
+    expect(screen.getByText("8 B")).toBeVisible();
+  });
+
+  it("파일 선택 상태는 메타데이터로만 표시한다", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.upload(screen.getByLabelText("PDF 파일 선택"), createPdf());
+
+    expect(await screen.findByText("수업자료.pdf")).toBeVisible();
+    expect(
+      screen.queryByText("수업자료.pdf 파일이 선택되었습니다.", {
+        selector: ".status-message",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("결과 미리보기는 성공 상태를 별도 상태 공지에 반복하지 않는다", async () => {
+    const user = userEvent.setup();
+    mockRenderPdfToPngs.mockResolvedValue(makePngPages());
+
+    render(<App />);
+
+    await user.upload(screen.getByLabelText("PDF 파일 선택"), createPdf());
+    await user.click(screen.getByRole("button", { name: "PNG로 변환하기" }));
+
+    expect(await screen.findByAltText("수업자료-00.png 미리보기")).toBeVisible();
+    expect(
+      screen.queryByText("2개의 PNG 파일이 준비되었습니다.", {
+        selector: ".status-message",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("미리보기 Object URL을 파일 교체, 초기화, 언마운트에서 회수한다", async () => {
+    const user = userEvent.setup();
+    const createObjectURL = vi.fn((_: Blob) => `blob:preview-${createObjectURL.mock.calls.length}`);
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectURL,
+    });
+    mockRenderPdfToPngs.mockResolvedValue(makePngPages());
+
+    const { unmount } = render(<App />);
+    const input = screen.getByLabelText("PDF 파일 선택");
+
+    await user.upload(input, createPdf());
+    await user.click(screen.getByRole("button", { name: "PNG로 변환하기" }));
+    await screen.findByAltText("수업자료-00.png 미리보기");
+
+    await user.upload(input, createPdf());
+    await waitFor(() => {
+      expect(revokeObjectURL).toHaveBeenCalledTimes(2);
+    });
+
+    await user.click(screen.getByRole("button", { name: "PNG로 변환하기" }));
+    await screen.findByAltText("수업자료-00.png 미리보기");
+    await user.click(screen.getByRole("button", { name: "초기화" }));
+    await waitFor(() => {
+      expect(revokeObjectURL).toHaveBeenCalledTimes(4);
+    });
+
+    await user.upload(input, createPdf());
+    await user.click(screen.getByRole("button", { name: "PNG로 변환하기" }));
+    await screen.findByAltText("수업자료-00.png 미리보기");
+    unmount();
+
+    expect(createObjectURL).toHaveBeenCalledTimes(6);
+    expect(revokeObjectURL).toHaveBeenCalledTimes(6);
   });
 
   it("PDF가 아닌 파일을 업로드하면 상태 메시지를 표시한다", async () => {
@@ -331,7 +458,7 @@ describe("App", () => {
     second.resolveHeader("%PDF-1.7");
 
     await waitFor(() => {
-      expect(screen.getByRole("status")).toHaveTextContent("새자료.pdf 파일이 선택되었습니다.");
+      expect(screen.getByText("새자료.pdf")).toBeVisible();
       expect(input).not.toBeDisabled();
     });
   });

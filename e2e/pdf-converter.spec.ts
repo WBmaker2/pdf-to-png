@@ -48,13 +48,49 @@ test("converts a real three-page PDF and downloads its PNG ZIP", async ({ page }
   expect(pageErrors).toEqual([]);
 });
 
-test("keeps the converter within a mobile viewport", async ({ page }) => {
+test("keeps a long download notice inside a 320px viewport", async ({ page }) => {
   const { consoleErrors, pageErrors } = collectPageErrors(page);
-  await page.setViewportSize({ width: 390, height: 844 });
+  const longPdfName = `${"classroomworksheet".repeat(18)}.pdf`;
+  const longZipName = `${longPdfName.slice(0, -4)}-png-1080px.zip`;
+  await page.setViewportSize({ width: 320, height: 844 });
   await page.goto("/");
+
+  const successTextColor = await page.evaluate(() => {
+    const notice = document.createElement("div");
+    notice.className = "status-message status-message--success";
+    const text = document.createElement("span");
+    text.className = "status-message-text";
+    text.textContent = "변환 완료";
+    notice.append(text);
+    document.body.append(notice);
+    const color = getComputedStyle(text).color;
+    notice.remove();
+    return color;
+  });
+  expect(successTextColor).toBe("rgb(19, 122, 63)");
 
   await expect(page.getByRole("heading", { name: "PDF PNG 변환기" })).toBeVisible();
   await expect(page.getByText("50MB 이하 · 최대 50페이지")).toBeVisible();
+  await page.getByLabel("PDF 파일 선택").setInputFiles({
+    name: longPdfName,
+    mimeType: "application/pdf",
+    buffer: createTestPdf(3),
+  });
+  await expect(page.locator(".selected-file")).toContainText(longPdfName);
+  await expect(page.locator(".status-message")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "PNG로 변환하기" }).click();
+  await expect(page.getByRole("button", { name: "ZIP 다운로드" })).toBeVisible();
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "ZIP 다운로드" }).click(),
+  ]);
+  await download.path();
+  expect(await download.failure()).toBeNull();
+  await expect(page.locator(".status-message")).toContainText(
+    `${longZipName} 다운로드를 시작했습니다.`,
+  );
+  await expect(page.locator(".status-message-text")).toBeVisible();
 
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),

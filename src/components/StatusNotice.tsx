@@ -23,7 +23,9 @@ export function StatusNotice({ tone, message }: StatusNoticeProps) {
       aria-live={tone === "error" ? "assertive" : "polite"}
     >
       <Icon aria-hidden="true" data-testid="status-icon" />
-      <span>{message}</span>
+      <span className="status-message-text" data-testid="status-message-text">
+        {message}
+      </span>
     </div>
   );
 }

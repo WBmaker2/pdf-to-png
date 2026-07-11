@@ -15,4 +15,14 @@ describe("StatusNotice", () => {
     expect(screen.getByTestId("status-icon")).toHaveClass(iconClass);
     expect(screen.getByText("작업 상태")).toBeVisible();
   });
+
+  it("keeps the status message in a wrapping flex item", async () => {
+    const { StatusNotice } = await import("./StatusNotice");
+    const message = "verylongunbrokenstatusmessagethatmustwrapinsideasmallviewport";
+
+    render(<StatusNotice tone="info" message={message} />);
+
+    expect(screen.getByTestId("status-message-text")).toHaveTextContent(message);
+  });
+
 });

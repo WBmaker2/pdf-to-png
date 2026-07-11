@@ -6,7 +6,7 @@
   --muted: #6b6b6b;
   --border: #e5e5e5;
   --primary: #2f6feb;
-  --success: #17a34a;
+  --success: #137a3f;
   --danger: #dc2626;
 
   color: var(--text);
@@ -383,6 +383,11 @@ progress {
   width: 18px;
   height: 18px;
   margin-top: 1px;
+}
+
+.status-message-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .status-message--info svg {

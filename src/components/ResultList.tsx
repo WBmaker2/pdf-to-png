@@ -5,6 +5,7 @@ import type { RenderedPngPage } from "../types/conversion";
 type ResultListProps = {
   pages: RenderedPngPage[];
   isDownloading: boolean;
+  isValidating: boolean;
   downloadProgress: number;
   onDownload: () => void;
 };
@@ -50,6 +51,7 @@ function ResultItem({ page }: ResultItemProps) {
 export function ResultList({
   pages,
   isDownloading,
+  isValidating,
   downloadProgress,
   onDownload,
 }: ResultListProps) {
@@ -60,7 +62,7 @@ export function ResultList({
     <section
       className="workflow-band result-panel"
       aria-label="변환 결과"
-      aria-busy={isDownloading}
+      aria-busy={isDownloading || isValidating}
     >
       <div className="result-heading">
         <div>
@@ -76,7 +78,7 @@ export function ResultList({
           <button
             type="button"
             className="primary-button"
-            disabled={isDownloading}
+            disabled={isDownloading || isValidating}
             onClick={onDownload}
           >
             {isDownloading ? (

@@ -70,6 +70,7 @@ const createDeferredPdf = (name = "수업자료.pdf") => {
     resolveHeader = resolve;
     rejectHeader = reject;
   });
+  void header.catch(() => undefined);
   const file = new File(["deferred"], name, { type: "application/pdf" });
 
   Object.defineProperty(file, "slice", {
@@ -294,6 +295,9 @@ describe("App", () => {
       "1",
     );
     expect(screen.getByLabelText("변환 설정")).toHaveAttribute("aria-busy", "true");
+    const conversionStatus = document.querySelector(".conversion-progress [role='status']");
+    expect(conversionStatus).toHaveTextContent("1 / 2 페이지 변환 중");
+    expect(document.querySelector(".status-message")).not.toBeInTheDocument();
 
     resolveConversion(pages);
     await screen.findByText("수업자료-00.png");
@@ -327,12 +331,11 @@ describe("App", () => {
 
     await user.upload(screen.getByLabelText("PDF 파일 선택"), createPdf());
 
-    expect(await screen.findByText("수업자료.pdf")).toBeVisible();
-    expect(
-      screen.queryByText("수업자료.pdf 파일이 선택되었습니다.", {
-        selector: ".status-message",
-      }),
-    ).not.toBeInTheDocument();
+    const selectedFileMetadata = (await screen.findByText("수업자료.pdf")).closest(
+      ".selected-file",
+    );
+    expect(selectedFileMetadata).toBeInTheDocument();
+    expect(document.querySelector(".status-message")).not.toBeInTheDocument();
   });
 
   it("결과 미리보기는 성공 상태를 별도 상태 공지에 반복하지 않는다", async () => {
@@ -345,11 +348,70 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "PNG로 변환하기" }));
 
     expect(await screen.findByAltText("수업자료-00.png 미리보기")).toBeVisible();
-    expect(
-      screen.queryByText("2개의 PNG 파일이 준비되었습니다.", {
-        selector: ".status-message",
-      }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByText("2개의 PNG 파일이 준비되었습니다.").closest(".result-panel")).toBeInTheDocument();
+    expect(document.querySelector(".status-message")).not.toBeInTheDocument();
+  });
+
+  it("교체 파일 검증 중에는 이전 파일의 변환과 다운로드를 막고 완료 후 새 파일로 전환한다", async () => {
+    const user = userEvent.setup();
+    const replacement = createDeferredPdf("새자료.pdf");
+    mockRenderPdfToPngs.mockResolvedValue(makePngPages());
+
+    render(<App />);
+
+    const input = screen.getByLabelText("PDF 파일 선택");
+    await user.upload(input, createPdf());
+    await user.click(screen.getByRole("button", { name: "PNG로 변환하기" }));
+    await screen.findByText("수업자료-00.png");
+
+    fireEvent.change(input, { target: { files: [replacement.file] } });
+
+    const convertButton = screen.getByRole("button", { name: "PNG로 변환하기" });
+    const downloadButton = screen.getByRole("button", { name: "ZIP 다운로드" });
+    expect(convertButton).toBeDisabled();
+    expect(downloadButton).toBeDisabled();
+
+    downloadButton.removeAttribute("disabled");
+    fireEvent.click(downloadButton);
+    convertButton.removeAttribute("disabled");
+    fireEvent.click(convertButton);
+    expect(mockBuildDownloadBlob).not.toHaveBeenCalled();
+    expect(mockRenderPdfToPngs).toHaveBeenCalledTimes(1);
+
+    replacement.resolveHeader("%PDF-1.7");
+
+    await waitFor(() => {
+      expect(screen.getByText("새자료.pdf")).toBeVisible();
+      expect(screen.getByRole("button", { name: "PNG로 변환하기" })).not.toBeDisabled();
+      expect(screen.queryByRole("button", { name: "ZIP 다운로드" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("교체 파일 검증이 실패하면 이전 파일의 변환과 다운로드를 다시 허용한다", async () => {
+    const user = userEvent.setup();
+    const replacement = createDeferredPdf("손상자료.pdf");
+    mockRenderPdfToPngs.mockResolvedValue(makePngPages());
+
+    render(<App />);
+
+    const input = screen.getByLabelText("PDF 파일 선택");
+    await user.upload(input, createPdf());
+    await user.click(screen.getByRole("button", { name: "PNG로 변환하기" }));
+    await screen.findByText("수업자료-00.png");
+
+    fireEvent.change(input, { target: { files: [replacement.file] } });
+    expect(screen.getByRole("button", { name: "PNG로 변환하기" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "ZIP 다운로드" })).toBeDisabled();
+
+    await act(async () => {
+      replacement.rejectHeader(new Error("signature read failed"));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "PNG로 변환하기" })).not.toBeDisabled();
+      expect(screen.getByRole("button", { name: "ZIP 다운로드" })).not.toBeDisabled();
+    });
   });
 
   it("미리보기 Object URL을 파일 교체, 초기화, 언마운트에서 회수한다", async () => {

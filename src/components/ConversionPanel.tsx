@@ -5,6 +5,7 @@ type ConversionPanelProps = {
   selectedFile: File | null;
   isConverting: boolean;
   isDownloading: boolean;
+  isValidating: boolean;
   progress: ConversionProgress | null;
   canReset: boolean;
   onConvert: () => void;
@@ -15,6 +16,7 @@ export function ConversionPanel({
   selectedFile,
   isConverting,
   isDownloading,
+  isValidating,
   progress,
   canReset,
   onConvert,
@@ -25,7 +27,7 @@ export function ConversionPanel({
   const progressText = progress
     ? `${progress.currentPage} / ${progress.totalPages} 페이지 변환 중`
     : "변환을 준비하고 있습니다.";
-  const isBusy = isConverting || isDownloading;
+  const isBusy = isConverting || isDownloading || isValidating;
 
   return (
     <section

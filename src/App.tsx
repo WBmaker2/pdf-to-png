@@ -60,7 +60,7 @@ export default function App() {
     setPages([]);
     setIsConverting(false);
     setProgress(null);
-    setStatus({ tone: "info", message: `${file.name} 파일이 선택되었습니다.` });
+    setStatus(null);
   }
 
   function handleReset() {
@@ -77,6 +77,10 @@ export default function App() {
   }
 
   async function handleConvert() {
+    if (isValidating) {
+      return;
+    }
+
     if (!selectedFile) {
       setStatus({ tone: "error", message: "먼저 PDF 파일을 선택해 주세요." });
       return;
@@ -90,7 +94,7 @@ export default function App() {
     const abortController = new AbortController();
     abortControllerRef.current?.abort();
     abortControllerRef.current = abortController;
-    setStatus({ tone: "info", message: "PDF를 PNG로 변환하고 있습니다." });
+    setStatus(null);
 
     try {
       const renderedPages = await renderPdfToPngs(selectedFile, {
@@ -102,10 +106,6 @@ export default function App() {
           }
 
           setProgress(nextProgress);
-          setStatus({
-            tone: "info",
-            message: `${nextProgress.currentPage} / ${nextProgress.totalPages} 페이지 변환 중`,
-          });
         },
       });
 
@@ -137,6 +137,10 @@ export default function App() {
   }
 
   async function handleDownload() {
+    if (isValidating) {
+      return;
+    }
+
     if (!selectedFile || pages.length === 0) {
       setStatus({ tone: "error", message: "다운로드할 PNG가 없습니다." });
       return;
@@ -214,6 +218,7 @@ export default function App() {
           selectedFile={selectedFile}
           isConverting={isConverting}
           isDownloading={isDownloading}
+          isValidating={isValidating}
           progress={progress}
           canReset={canReset}
           onConvert={handleConvert}
@@ -222,6 +227,7 @@ export default function App() {
         <ResultList
           pages={pages}
           isDownloading={isDownloading}
+          isValidating={isValidating}
           downloadProgress={downloadProgress}
           onDownload={handleDownload}
         />

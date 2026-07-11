@@ -33,6 +33,7 @@ export default function App() {
   });
   const [validationResetId, setValidationResetId] = useState(0);
   const conversionIdRef = useRef(0);
+  const conversionInFlightRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const downloadIdRef = useRef(0);
   const downloadAbortControllerRef = useRef<AbortController | null>(null);
@@ -54,6 +55,7 @@ export default function App() {
     cancelActiveConversion();
     cancelActiveDownload();
     conversionIdRef.current += 1;
+    conversionInFlightRef.current = false;
     setSelectedFile(file);
     setPages([]);
     setIsConverting(false);
@@ -65,6 +67,7 @@ export default function App() {
     cancelActiveConversion();
     cancelActiveDownload();
     conversionIdRef.current += 1;
+    conversionInFlightRef.current = false;
     setValidationResetId((currentId) => currentId + 1);
     setSelectedFile(null);
     setPages([]);
@@ -75,7 +78,7 @@ export default function App() {
   }
 
   async function handleConvert() {
-    if (isValidating) {
+    if (isValidating || conversionInFlightRef.current) {
       return;
     }
 
@@ -84,6 +87,7 @@ export default function App() {
       return;
     }
 
+    conversionInFlightRef.current = true;
     setIsConverting(true);
     setPages([]);
     setProgress(null);
@@ -96,6 +100,10 @@ export default function App() {
 
     try {
       const { renderPdfToPngs } = await import("./lib/pdfRender");
+      if (conversionIdRef.current !== conversionId || abortController.signal.aborted) {
+        return;
+      }
+
       const renderedPages = await renderPdfToPngs(selectedFile, {
         targetLongEdge: TARGET_LONG_EDGE,
         signal: abortController.signal,
@@ -127,6 +135,7 @@ export default function App() {
       });
     } finally {
       if (conversionIdRef.current === conversionId) {
+        conversionInFlightRef.current = false;
         if (abortControllerRef.current === abortController) {
           abortControllerRef.current = null;
         }
@@ -159,6 +168,10 @@ export default function App() {
 
     try {
       const { buildDownloadBlob, downloadBlob } = await import("./lib/downloads");
+      if (downloadIdRef.current !== downloadId || abortController.signal.aborted) {
+        return;
+      }
+
       const output = await buildDownloadBlob(selectedFile.name, pages, {
         signal: abortController.signal,
         onProgress: (percent) => {

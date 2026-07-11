@@ -20,6 +20,7 @@ export default function App() {
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [progress, setProgress] = useState<ConversionProgress | null>(null);
   const [statusMessage, setStatusMessage] = useState("PDF 파일을 선택해 주세요.");
+  const [validationResetId, setValidationResetId] = useState(0);
   const conversionIdRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
   const downloadIdRef = useRef(0);
@@ -53,6 +54,7 @@ export default function App() {
     cancelActiveConversion();
     cancelActiveDownload();
     conversionIdRef.current += 1;
+    setValidationResetId((currentId) => currentId + 1);
     setSelectedFile(null);
     setPages([]);
     setIsConverting(false);
@@ -181,6 +183,7 @@ export default function App() {
         <FileDropzone
           selectedFile={selectedFile}
           isDisabled={isConverting}
+          validationResetId={validationResetId}
           onSelectFile={handleSelectFile}
           onRejectFile={setStatusMessage}
         />

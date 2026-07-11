@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { FileUp } from "lucide-react";
 import { validatePdfFile } from "../lib/pdfValidation";
 import { getConversionErrorMessage } from "../lib/userMessages";
@@ -6,6 +6,7 @@ import { getConversionErrorMessage } from "../lib/userMessages";
 type FileDropzoneProps = {
   selectedFile: File | null;
   isDisabled?: boolean;
+  validationResetId: number;
   onSelectFile: (file: File) => void;
   onRejectFile: (message: string) => void;
 };
@@ -13,12 +14,18 @@ type FileDropzoneProps = {
 export function FileDropzone({
   selectedFile,
   isDisabled = false,
+  validationResetId,
   onSelectFile,
   onRejectFile,
 }: FileDropzoneProps) {
   const [isValidating, setIsValidating] = useState(false);
   const validationIdRef = useRef(0);
   const isSelectionDisabled = isDisabled || isValidating;
+
+  useLayoutEffect(() => {
+    validationIdRef.current += 1;
+    setIsValidating(false);
+  }, [validationResetId]);
 
   async function handleFile(file: File | undefined) {
     if (!file) {

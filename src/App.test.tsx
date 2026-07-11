@@ -17,6 +17,17 @@ import { renderPdfToPngs } from "./lib/pdfRender";
 import { PdfValidationError, validatePdfFile } from "./lib/pdfValidation";
 import App from "./App";
 
+if (!Blob.prototype.text) {
+  Blob.prototype.text = function () {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.addEventListener("error", () => reject(reader.error));
+      reader.addEventListener("load", () => resolve(reader.result as string));
+      reader.readAsText(this);
+    });
+  };
+}
+
 const makePngPages = () => [
   {
     pageIndex: 0,
@@ -44,13 +55,39 @@ const createPdf = () =>
     type: "application/pdf",
   });
 
+const createDeferredPdf = (name = "수업자료.pdf") => {
+  let resolveHeader: (header: string) => void = () => {
+    throw new Error("header resolver was not set");
+  };
+  let rejectHeader: (error: Error) => void = () => {
+    throw new Error("header rejecter was not set");
+  };
+  const header = new Promise<string>((resolve, reject) => {
+    resolveHeader = resolve;
+    rejectHeader = reject;
+  });
+  const file = new File(["deferred"], name, { type: "application/pdf" });
+
+  Object.defineProperty(file, "slice", {
+    value: () => ({ text: () => header }) as Blob,
+  });
+
+  return { file, rejectHeader, resolveHeader };
+};
+
 describe("App", () => {
   beforeEach(() => {
     mockRenderPdfToPngs.mockReset();
     mockBuildDownloadBlob.mockReset();
     mockDownloadBlob.mockReset();
     mockValidatePdfFile.mockReset();
-    mockValidatePdfFile.mockResolvedValue(undefined);
+    mockValidatePdfFile.mockImplementation(async (file) => {
+      const { validatePdfFile: actualValidatePdfFile } = await vi.importActual<
+        typeof import("./lib/pdfValidation")
+      >("./lib/pdfValidation");
+
+      return actualValidatePdfFile(file);
+    });
   });
 
   afterEach(() => {
@@ -274,43 +311,70 @@ describe("App", () => {
   });
 
   it("늦게 끝난 이전 파일 검증 결과를 무시한다", async () => {
-    let resolveFirst: () => void = () => {
-      throw new Error("first validator was not set");
-    };
-    let resolveSecond: () => void = () => {
-      throw new Error("second validator was not set");
-    };
-    mockValidatePdfFile.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolveFirst = resolve;
-        }),
-    );
-    mockValidatePdfFile.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolveSecond = resolve;
-        }),
-    );
+    const first = createDeferredPdf();
+    const second = createDeferredPdf("새자료.pdf");
 
     render(<App />);
 
     const input = screen.getByLabelText("PDF 파일 선택");
-    fireEvent.change(input, { target: { files: [createPdf()] } });
+    fireEvent.change(input, { target: { files: [first.file] } });
     expect(input).toBeDisabled();
     fireEvent.change(input, {
-      target: { files: [new File(["%PDF-1.7"], "새자료.pdf", { type: "application/pdf" })] },
+      target: { files: [second.file] },
     });
 
-    resolveSecond();
+    first.resolveHeader("%PDF-1.7");
     await waitFor(() => {
-      expect(screen.getByRole("status")).toHaveTextContent("새자료.pdf 파일이 선택되었습니다.");
+      expect(screen.getByRole("status")).toHaveTextContent("PDF 파일을 선택해 주세요.");
+      expect(input).toBeDisabled();
     });
-    resolveFirst();
+    second.resolveHeader("%PDF-1.7");
 
     await waitFor(() => {
       expect(screen.getByRole("status")).toHaveTextContent("새자료.pdf 파일이 선택되었습니다.");
       expect(input).not.toBeDisabled();
+    });
+  });
+
+  it("초기화 후 늦은 PDF 검증 성공을 무시한다", async () => {
+    const user = userEvent.setup();
+    const deferred = createDeferredPdf();
+
+    render(<App />);
+
+    const input = screen.getByLabelText("PDF 파일 선택");
+    fireEvent.change(input, { target: { files: [deferred.file] } });
+    expect(input).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "초기화" }));
+    expect(input).not.toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("PDF 파일을 선택해 주세요.");
+
+    deferred.resolveHeader("%PDF-1.7");
+
+    await waitFor(() => {
+      expect(screen.queryByText("수업자료.pdf")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "PNG로 변환하기" })).toBeDisabled();
+      expect(screen.getByRole("status")).toHaveTextContent("PDF 파일을 선택해 주세요.");
+    });
+  });
+
+  it("초기화 후 늦은 PDF 검증 실패를 무시한다", async () => {
+    const user = userEvent.setup();
+    const deferred = createDeferredPdf();
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText("PDF 파일 선택"), {
+      target: { files: [deferred.file] },
+    });
+    await user.click(screen.getByRole("button", { name: "초기화" }));
+
+    deferred.rejectHeader(new Error("raw signature read failure"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("수업자료.pdf")).not.toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent("PDF 파일을 선택해 주세요.");
     });
   });
 });

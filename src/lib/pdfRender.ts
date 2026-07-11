@@ -1,5 +1,10 @@
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorkerSrc from "pdfjs-dist/build/pdf.worker.mjs?url";
+import {
+  assertPdfFileSize,
+  assertPdfPageCount,
+  assertRenderedPngBytes,
+} from "./conversionLimits";
 import { buildPngFileName } from "./fileNames";
 import type {
   ConversionProgress,
@@ -65,6 +70,7 @@ export const renderPdfToPngs = async (
   { targetLongEdge, onProgress, signal }: RenderPdfOptions,
 ): Promise<RenderedPngPage[]> => {
   throwIfAborted(signal);
+  assertPdfFileSize(file);
   const data = await file.arrayBuffer();
   throwIfAborted(signal);
   const loadingTask = pdfjsLib.getDocument({ data });
@@ -100,7 +106,10 @@ export const renderPdfToPngs = async (
 
   const pdf = doc;
   const pages: RenderedPngPage[] = [];
+  let renderedBytes = 0;
   try {
+    assertPdfPageCount(pdf.numPages);
+
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
       throwIfAborted(signal);
       let page: pdfjsLib.PDFPageProxy | null = null;
@@ -152,6 +161,8 @@ export const renderPdfToPngs = async (
 
         const blob = await canvasToPngBlob(canvas);
         throwIfAborted(signal);
+        assertRenderedPngBytes(renderedBytes + blob.size);
+        renderedBytes += blob.size;
         pages.push({
           pageIndex: pageNumber - 1,
           fileName: buildPngFileName(file.name, pageNumber - 1, pdf.numPages),

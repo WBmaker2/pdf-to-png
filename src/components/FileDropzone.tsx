@@ -25,6 +25,10 @@ export function FileDropzone({
   useLayoutEffect(() => {
     validationIdRef.current += 1;
     setIsValidating(false);
+
+    return () => {
+      validationIdRef.current += 1;
+    };
   }, [validationResetId]);
 
   async function handleFile(file: File | undefined) {

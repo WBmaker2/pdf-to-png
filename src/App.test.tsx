@@ -2,18 +2,32 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./lib/pdfRender", () => ({ renderPdfToPngs: vi.fn() }));
-vi.mock("./lib/downloads", () => ({
+const lazyLoadMocks = vi.hoisted(() => ({
+  pdfRenderEvaluations: 0,
+  downloadsEvaluations: 0,
+  renderPdfToPngs: vi.fn(),
   buildDownloadBlob: vi.fn(),
   downloadBlob: vi.fn(),
 }));
+
+vi.mock("./lib/pdfRender", () => {
+  lazyLoadMocks.pdfRenderEvaluations += 1;
+
+  return { renderPdfToPngs: lazyLoadMocks.renderPdfToPngs };
+});
+vi.mock("./lib/downloads", () => {
+  lazyLoadMocks.downloadsEvaluations += 1;
+
+  return {
+    buildDownloadBlob: lazyLoadMocks.buildDownloadBlob,
+    downloadBlob: lazyLoadMocks.downloadBlob,
+  };
+});
 vi.mock("./lib/pdfValidation", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./lib/pdfValidation")>();
 
   return { ...actual, validatePdfFile: vi.fn() };
 });
-import { buildDownloadBlob, downloadBlob } from "./lib/downloads";
-import { renderPdfToPngs } from "./lib/pdfRender";
 import { PdfValidationError, validatePdfFile } from "./lib/pdfValidation";
 import App from "./App";
 
@@ -45,9 +59,9 @@ const makePngPages = () => [
   },
 ];
 
-const mockRenderPdfToPngs = vi.mocked(renderPdfToPngs);
-const mockBuildDownloadBlob = vi.mocked(buildDownloadBlob);
-const mockDownloadBlob = vi.mocked(downloadBlob);
+const mockRenderPdfToPngs = lazyLoadMocks.renderPdfToPngs;
+const mockBuildDownloadBlob = lazyLoadMocks.buildDownloadBlob;
+const mockDownloadBlob = lazyLoadMocks.downloadBlob;
 const mockValidatePdfFile = vi.mocked(validatePdfFile);
 const originalCreateObjectURL = URL.createObjectURL;
 const originalRevokeObjectURL = URL.revokeObjectURL;
@@ -117,6 +131,38 @@ describe("App", () => {
     Object.defineProperty(URL, "revokeObjectURL", {
       configurable: true,
       value: originalRevokeObjectURL,
+    });
+  });
+
+  it("loads conversion and download modules only after their user actions", async () => {
+    const user = userEvent.setup();
+    mockRenderPdfToPngs.mockResolvedValue(makePngPages());
+    mockBuildDownloadBlob.mockResolvedValue({
+      fileName: "수업자료-png-1080px.zip",
+      blob: new Blob(["zip-data"], { type: "application/zip" }),
+    });
+
+    expect(lazyLoadMocks.pdfRenderEvaluations).toBe(0);
+    expect(lazyLoadMocks.downloadsEvaluations).toBe(0);
+
+    render(<App />);
+    expect(lazyLoadMocks.pdfRenderEvaluations).toBe(0);
+    expect(lazyLoadMocks.downloadsEvaluations).toBe(0);
+
+    await user.upload(screen.getByLabelText("PDF 파일 선택"), createPdf());
+    expect(lazyLoadMocks.pdfRenderEvaluations).toBe(0);
+    expect(lazyLoadMocks.downloadsEvaluations).toBe(0);
+
+    await user.click(screen.getByRole("button", { name: "PNG로 변환하기" }));
+    await waitFor(() => {
+      expect(lazyLoadMocks.pdfRenderEvaluations).toBe(1);
+    });
+    await screen.findByText("수업자료-00.png");
+    expect(lazyLoadMocks.downloadsEvaluations).toBe(0);
+
+    await user.click(screen.getByRole("button", { name: "ZIP 다운로드" }));
+    await waitFor(() => {
+      expect(lazyLoadMocks.downloadsEvaluations).toBe(1);
     });
   });
 
@@ -202,7 +248,9 @@ describe("App", () => {
     fireEvent.click(downloadButton);
     fireEvent.click(downloadButton);
 
-    expect(mockBuildDownloadBlob).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(mockBuildDownloadBlob).toHaveBeenCalledTimes(1);
+    });
     expect(
       screen.getByRole("button", { name: /ZIP 생성 중/ }),
     ).toBeDisabled();

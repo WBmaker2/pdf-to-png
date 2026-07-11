@@ -3,8 +3,6 @@ import { ConversionPanel } from "./components/ConversionPanel";
 import { FileDropzone } from "./components/FileDropzone";
 import { ResultList } from "./components/ResultList";
 import { StatusNotice, type StatusTone } from "./components/StatusNotice";
-import { renderPdfToPngs } from "./lib/pdfRender";
-import { buildDownloadBlob, downloadBlob } from "./lib/downloads";
 import {
   getConversionErrorMessage,
   getDownloadErrorMessage,
@@ -97,6 +95,7 @@ export default function App() {
     setStatus(null);
 
     try {
+      const { renderPdfToPngs } = await import("./lib/pdfRender");
       const renderedPages = await renderPdfToPngs(selectedFile, {
         targetLongEdge: TARGET_LONG_EDGE,
         signal: abortController.signal,
@@ -159,6 +158,7 @@ export default function App() {
     setStatus(null);
 
     try {
+      const { buildDownloadBlob, downloadBlob } = await import("./lib/downloads");
       const output = await buildDownloadBlob(selectedFile.name, pages, {
         signal: abortController.signal,
         onProgress: (percent) => {

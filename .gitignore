@@ -12,3 +12,4 @@ tsconfig.node.tsbuildinfo
 .DS_Store
 .playwright-mcp/
 .worktrees/
+.superpowers/

@@ -65,7 +65,10 @@ export function ResultList({
       aria-busy={isDownloading || isValidating}
     >
       <div className="result-heading">
-        <div>
+        <div
+          role={hasResults ? "status" : undefined}
+          aria-live={hasResults ? "polite" : undefined}
+        >
           <span className="band-step">3. 결과</span>
           <h2>{hasResults ? "변환 완료" : "변환 결과"}</h2>
           <p>

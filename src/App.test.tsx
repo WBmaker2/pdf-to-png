@@ -265,9 +265,9 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "ZIP 다운로드" }));
 
     await waitFor(() => {
-      const status = screen.getByRole("status");
-      expect(status).toHaveTextContent("ZIP 파일 생성에 실패했습니다.");
-      expect(status).toBeVisible();
+      const statusMessage = screen.getByText("ZIP 파일 생성에 실패했습니다.");
+      expect(statusMessage).toBeVisible();
+      expect(statusMessage.closest('[role="status"]')).toBeInTheDocument();
     });
   });
 
@@ -295,9 +295,8 @@ describe("App", () => {
       "1",
     );
     expect(screen.getByLabelText("변환 설정")).toHaveAttribute("aria-busy", "true");
-    const conversionStatus = document.querySelector(".conversion-progress [role='status']");
-    expect(conversionStatus).toHaveTextContent("1 / 2 페이지 변환 중");
-    expect(document.querySelector(".status-message")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.getByRole("status")).toHaveTextContent("1 / 2 페이지 변환 중");
 
     resolveConversion(pages);
     await screen.findByText("수업자료-00.png");
@@ -335,7 +334,7 @@ describe("App", () => {
       ".selected-file",
     );
     expect(selectedFileMetadata).toBeInTheDocument();
-    expect(document.querySelector(".status-message")).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("status")).toHaveLength(0);
   });
 
   it("결과 미리보기는 성공 상태를 별도 상태 공지에 반복하지 않는다", async () => {
@@ -349,7 +348,10 @@ describe("App", () => {
 
     expect(await screen.findByAltText("수업자료-00.png 미리보기")).toBeVisible();
     expect(screen.getByText("2개의 PNG 파일이 준비되었습니다.").closest(".result-panel")).toBeInTheDocument();
-    expect(document.querySelector(".status-message")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.getByRole("status")).toHaveTextContent("변환 완료");
+    expect(screen.getByRole("status")).toHaveTextContent("2개의 PNG 파일이 준비되었습니다.");
+    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
   });
 
   it("교체 파일 검증 중에는 이전 파일의 변환과 다운로드를 막고 완료 후 새 파일로 전환한다", async () => {

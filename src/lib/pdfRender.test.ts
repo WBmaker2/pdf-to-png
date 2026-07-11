@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getScaleForLongEdge } from "./pdfRender";
+import { getScaleForLongEdge } from "./pageScale";
 
 describe("getScaleForLongEdge", () => {
   it("computes scale by long edge for portrait page", () => {

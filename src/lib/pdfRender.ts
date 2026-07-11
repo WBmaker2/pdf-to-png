@@ -6,17 +6,13 @@ import {
   assertRenderedPngBytes,
 } from "./conversionLimits";
 import { buildPngFileName } from "./fileNames";
+import { getScaleForLongEdge } from "./pageScale";
 import type {
   ConversionProgress,
   RenderedPngPage,
 } from "../types/conversion";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
-
-export type PageSize = {
-  width: number;
-  height: number;
-};
 
 export type RenderPdfOptions = {
   targetLongEdge: number;
@@ -31,26 +27,6 @@ const throwIfAborted = (signal?: AbortSignal) => {
   if (signal?.aborted) {
     throw createAbortError();
   }
-};
-
-export const getScaleForLongEdge = (
-  pageSize: PageSize,
-  targetLongEdge: number,
-): number => {
-  if (!Number.isFinite(targetLongEdge) || targetLongEdge <= 0) {
-    throw new Error("targetLongEdge must be greater than 0");
-  }
-
-  if (
-    !Number.isFinite(pageSize.width) ||
-    !Number.isFinite(pageSize.height) ||
-    pageSize.width <= 0 ||
-    pageSize.height <= 0
-  ) {
-    throw new Error("pageSize must have finite, positive width and height");
-  }
-
-  return targetLongEdge / Math.max(pageSize.width, pageSize.height);
 };
 
 const canvasToPngBlob = (canvas: HTMLCanvasElement): Promise<Blob> =>
@@ -142,7 +118,7 @@ export const renderPdfToPngs = async (
         context.fillStyle = "#ffffff";
         context.fillRect(0, 0, canvas.width, canvas.height);
 
-        const renderTask = page.render({ canvasContext: context, viewport });
+        const renderTask = page.render({ canvas, viewport });
         const handleRenderAbort = () => {
           renderTask.cancel();
         };
@@ -185,7 +161,11 @@ export const renderPdfToPngs = async (
       }
     }
   } finally {
-    await pdf.destroy();
+    try {
+      await pdf.cleanup();
+    } finally {
+      await destroyLoadingTask();
+    }
   }
 
   return pages;

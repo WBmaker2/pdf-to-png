@@ -35,7 +35,32 @@ test("converts a real three-page PDF and downloads its PNG ZIP", async ({ page }
   await expect(page.getByText("sample-00.png")).toBeVisible();
   await expect(page.getByText("sample-01.png")).toBeVisible();
   await expect(page.getByText("sample-02.png")).toBeVisible();
+  await expect(page.locator(".result-card")).toHaveCount(3);
+  await expect(page.locator(".result-file-name")).toHaveText([
+    "sample-00.png",
+    "sample-01.png",
+    "sample-02.png",
+  ]);
+  await expect(page.locator(".result-dimensions")).toHaveText([
+    "835 x 1080",
+    "835 x 1080",
+    "835 x 1080",
+  ]);
   await expect(page.getByAltText("sample-00.png 미리보기")).toBeVisible();
+  await expect(page.locator(".result-card img")).toHaveCount(3);
+  await expect(page.locator(".result-card img").nth(2)).toBeVisible();
+  expect(
+    await page.locator(".result-card img").evaluateAll((images) =>
+      images.map((image) => ({
+        width: (image as HTMLImageElement).naturalWidth,
+        height: (image as HTMLImageElement).naturalHeight,
+      })),
+    ),
+  ).toEqual([
+    { width: 835, height: 1080 },
+    { width: 835, height: 1080 },
+    { width: 835, height: 1080 },
+  ]);
 
   const [download] = await Promise.all([
     page.waitForEvent("download"),

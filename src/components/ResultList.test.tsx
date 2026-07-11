@@ -43,6 +43,7 @@ describe("ResultList", () => {
         isDownloading={false}
         isValidating={false}
         downloadProgress={0}
+        announceCompletion={false}
         onDownload={vi.fn()}
       />,
     );
@@ -57,6 +58,7 @@ describe("ResultList", () => {
         isDownloading={false}
         isValidating={false}
         downloadProgress={0}
+        announceCompletion
         onDownload={vi.fn()}
       />,
     );
@@ -67,7 +69,41 @@ describe("ResultList", () => {
     expect(status).toHaveAttribute("aria-live", "polite");
     expect(status).toHaveTextContent("변환 완료");
     expect(status).toHaveTextContent("1개의 PNG 파일이 준비되었습니다.");
+    expect(status).not.toContainElement(screen.getByText("3. 결과"));
     expect(status).not.toContainElement(screen.getByRole("button", { name: "PNG 다운로드" }));
     expect(status).not.toContainElement(screen.getByRole("list"));
+  });
+
+  it("announces only download progress while downloading results", () => {
+    render(
+      <ResultList
+        pages={[page]}
+        isDownloading
+        isValidating={false}
+        downloadProgress={60}
+        announceCompletion={false}
+        onDownload={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.getByRole("status")).toHaveTextContent("ZIP 파일 생성 진행률 60%");
+    expect(screen.getByRole("status")).not.toHaveTextContent("변환 완료");
+  });
+
+  it("suppresses the internal completion status when an external notice is present", () => {
+    render(
+      <ResultList
+        pages={[page]}
+        isDownloading={false}
+        isValidating={false}
+        downloadProgress={0}
+        announceCompletion={false}
+        onDownload={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryAllByRole("status")).toHaveLength(0);
+    expect(screen.getByText("변환 완료")).toBeInTheDocument();
   });
 });

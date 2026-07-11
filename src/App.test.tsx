@@ -171,6 +171,11 @@ describe("App", () => {
         fileName: "수업자료-png-1080px.zip",
       }),
     );
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "수업자료-png-1080px.zip 다운로드를 시작했습니다.",
+    );
+    expect(screen.queryByText("ZIP 파일을 생성하고 있습니다.")).not.toBeInTheDocument();
   });
 
   it("ZIP 생성 중에는 반복 다운로드를 막고 진행률을 표시한다", async () => {
@@ -213,6 +218,9 @@ describe("App", () => {
     expect(
       screen.getByRole("progressbar", { name: "ZIP 파일 생성 진행률" }),
     ).toHaveAttribute("max", "100");
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.getByRole("status")).toHaveTextContent("ZIP 파일 생성 진행률 60%");
+    expect(screen.queryByText("ZIP 파일을 생성하고 있습니다.")).not.toBeInTheDocument();
 
     resolveDownload({
       fileName: "수업자료-png-1080px.zip",

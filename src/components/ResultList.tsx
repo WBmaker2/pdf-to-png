@@ -7,6 +7,7 @@ type ResultListProps = {
   isDownloading: boolean;
   isValidating: boolean;
   downloadProgress: number;
+  announceCompletion: boolean;
   onDownload: () => void;
 };
 
@@ -53,10 +54,12 @@ export function ResultList({
   isDownloading,
   isValidating,
   downloadProgress,
+  announceCompletion,
   onDownload,
 }: ResultListProps) {
   const downloadLabel = pages.length === 1 ? "PNG 다운로드" : "ZIP 다운로드";
   const hasResults = pages.length > 0;
+  const shouldAnnounceCompletion = announceCompletion && hasResults && !isDownloading;
 
   return (
     <section
@@ -66,16 +69,24 @@ export function ResultList({
     >
       <div className="result-heading">
         <div
-          role={hasResults ? "status" : undefined}
-          aria-live={hasResults ? "polite" : undefined}
+          className="result-copy"
         >
           <span className="band-step">3. 결과</span>
-          <h2>{hasResults ? "변환 완료" : "변환 결과"}</h2>
-          <p>
-            {hasResults
-              ? `${pages.length}개의 PNG 파일이 준비되었습니다.`
-              : "아직 변환 결과가 없습니다."}
-          </p>
+          {shouldAnnounceCompletion ? (
+            <div role="status" aria-live="polite">
+              <h2>변환 완료</h2>
+              <p>{`${pages.length}개의 PNG 파일이 준비되었습니다.`}</p>
+            </div>
+          ) : (
+            <>
+              <h2>{hasResults ? "변환 완료" : "변환 결과"}</h2>
+              <p>
+                {hasResults
+                  ? `${pages.length}개의 PNG 파일이 준비되었습니다.`
+                  : "아직 변환 결과가 없습니다."}
+              </p>
+            </>
+          )}
         </div>
         {hasResults ? (
           <button

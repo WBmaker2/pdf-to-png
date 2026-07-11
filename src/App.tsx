@@ -156,7 +156,7 @@ export default function App() {
     downloadAbortControllerRef.current = abortController;
     setIsDownloading(true);
     setDownloadProgress(0);
-    setStatus({ tone: "info", message: "ZIP 파일을 생성하고 있습니다." });
+    setStatus(null);
 
     try {
       const output = await buildDownloadBlob(selectedFile.name, pages, {
@@ -229,6 +229,7 @@ export default function App() {
           isDownloading={isDownloading}
           isValidating={isValidating}
           downloadProgress={downloadProgress}
+          announceCompletion={pages.length > 0 && !isDownloading && !status}
           onDownload={handleDownload}
         />
         {status ? <StatusNotice tone={status.tone} message={status.message} /> : null}

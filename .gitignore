@@ -11,5 +11,7 @@ tsconfig.node.tsbuildinfo
 # Tooling noise
 .DS_Store
 .playwright-mcp/
+test-results/
+playwright-report/
 .worktrees/
 .superpowers/

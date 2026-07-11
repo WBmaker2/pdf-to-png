@@ -19,6 +19,7 @@
 - The app remains usable at viewport widths from `320px` upward with no horizontal overflow or overlapping controls.
 - Interactive progress must use semantic status/progress attributes and motion must respect `prefers-reduced-motion`.
 - Use the Open Design `Neutral Modern` direction: quiet utility layout, flat white surfaces, restrained cobalt accent, green/red only for status, `8px` maximum card/control radius, no gradients, decorative blobs, or nested cards.
+- Keep a small `업데이트 내역` button in the app header. Its accessible dialog records the original development date `2026-05-03` and the current improvement date `2026-07-12` with concise Korean change notes; append a new entry whenever the app changes.
 - Preserve unrelated existing work and follow TDD: add a failing test, observe the failure, implement, then rerun covering tests before each commit.
 
 ---
@@ -556,4 +557,94 @@ Expected: all functional checks PASS and audit reports no known vulnerabilities.
 ```bash
 git add package.json package-lock.json src
 git commit -m "chore: upgrade React and UI dependencies"
+```
+
+---
+
+### Task 9: In-App Update History
+
+**Files:**
+- Create: `src/data/updateHistory.ts`
+- Create: `src/components/UpdateHistoryDialog.tsx`
+- Create: `src/components/UpdateHistoryDialog.test.tsx`
+- Modify: `src/App.tsx`
+- Modify: `src/App.css`
+- Modify: `README.md`
+- Modify: `e2e/pdf-converter.spec.ts`
+
+**Interfaces:**
+- `UpdateHistoryEntry = { date: string; title: string; details: string[] }`.
+- `UPDATE_HISTORY` is newest-first and contains exact dates `2026-07-12` and `2026-05-03`.
+- `UpdateHistoryDialog` owns its open state, restores focus to the trigger on close, closes with its icon button, Escape, or backdrop click, and keeps keyboard focus inside while open.
+
+- [ ] **Step 1: Write failing component tests**
+
+```tsx
+render(<UpdateHistoryDialog />);
+await user.click(screen.getByRole("button", { name: "업데이트 내역" }));
+expect(screen.getByRole("dialog", { name: "업데이트 내역" })).toBeVisible();
+expect(screen.getByText("2026-07-12")).toBeVisible();
+expect(screen.getByText("2026-05-03")).toBeVisible();
+await user.keyboard("{Escape}");
+expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+expect(screen.getByRole("button", { name: "업데이트 내역" })).toHaveFocus();
+```
+
+Also test close-button behavior, backdrop click, and Tab/Shift+Tab wrapping between dialog controls.
+
+- [ ] **Step 2: Run tests and observe the missing-component failure**
+
+Run: `npm test -- --run src/components/UpdateHistoryDialog.test.tsx`
+
+Expected: FAIL because the component does not exist.
+
+- [ ] **Step 3: Add the durable update data**
+
+Use newest-first entries with these exact headings and concise Korean details:
+
+```ts
+export const UPDATE_HISTORY: UpdateHistoryEntry[] = [
+  {
+    date: "2026-07-12",
+    title: "안정성 및 사용성 개선",
+    details: [
+      "대용량 PDF 보호와 취소 가능한 ZIP 생성을 추가했습니다.",
+      "PDF 검증, 드래그앤드롭, 미리보기와 접근성을 개선했습니다.",
+      "실제 PDF 브라우저 테스트와 최신 의존성 검증을 추가했습니다.",
+    ],
+  },
+  {
+    date: "2026-05-03",
+    title: "최초 개발",
+    details: [
+      "PDF 각 페이지를 긴 변 1080px PNG로 변환하는 기능을 만들었습니다.",
+      "여러 페이지 결과를 페이지 번호 파일명으로 묶어 ZIP으로 내려받도록 했습니다.",
+    ],
+  },
+];
+```
+
+- [ ] **Step 4: Build the accessible small-button dialog**
+
+Place a small secondary button with the Lucide `History` icon at the right side of the compact app header. Render the modal only while open, use `role="dialog"`, `aria-modal="true"`, and `aria-labelledby`, focus the icon-only close button on open, trap Tab/Shift+Tab within the dialog, restore trigger focus on close, and lock background scrolling while open. The close icon button uses `X` and `aria-label="업데이트 내역 닫기"`.
+
+Use the existing Neutral Modern tokens, `8px` radius, no gradient/shadow-heavy treatment, and a full-screen translucent backdrop only for modal separation. On mobile the dialog fits within `calc(100vw - 24px)` and never exceeds the viewport height; its body scrolls internally.
+
+- [ ] **Step 5: Add browser coverage and documentation**
+
+In Chromium, open `업데이트 내역`, assert both dates and the latest heading, close with Escape, and assert the trigger regains focus. Repeat the open state at `320px` and assert `document.documentElement.scrollWidth <= innerWidth`.
+
+Document the in-app update history in `README.md` and state that future functional/UI changes require a new newest-first entry.
+
+- [ ] **Step 6: Run the release checks**
+
+Run: `npm test -- --run && npm run test:e2e -- --project=chromium && npm run lint && npm run build`
+
+Expected: all checks PASS.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add docs/superpowers/plans/2026-07-11-pdf-converter-hardening.md src/data/updateHistory.ts src/components/UpdateHistoryDialog.tsx src/components/UpdateHistoryDialog.test.tsx src/App.tsx src/App.css README.md e2e/pdf-converter.spec.ts
+git commit -m "feat: add in-app update history"
 ```

@@ -232,6 +232,78 @@ describe("App", () => {
     });
   });
 
+  it("ZIP 생성 중에는 파일 교체 입력과 잘못된 드롭을 막고 완료 후 파일 교체를 허용한다", async () => {
+    const user = userEvent.setup({ applyAccept: false });
+    const pages = makePngPages();
+    let resolveDownload: (download: { fileName: string; blob: Blob }) => void = () => {
+      throw new Error("download resolver was not set");
+    };
+    mockRenderPdfToPngs.mockResolvedValue(pages);
+    mockBuildDownloadBlob.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveDownload = resolve;
+        }),
+    );
+    mockValidatePdfFile.mockImplementation(async (file) => {
+      if (file.name === "memo.txt") {
+        throw new PdfValidationError("PDF 파일만 선택할 수 있습니다.");
+      }
+
+      const { validatePdfFile: actualValidatePdfFile } = await vi.importActual<
+        typeof import("./lib/pdfValidation")
+      >("./lib/pdfValidation");
+
+      return actualValidatePdfFile(file);
+    });
+
+    render(<App />);
+
+    const input = screen.getByLabelText("PDF 파일 선택");
+    await user.upload(input, createPdf());
+    await user.click(screen.getByRole("button", { name: "PNG로 변환하기" }));
+    await screen.findByText("수업자료-00.png");
+    await user.click(screen.getByRole("button", { name: "ZIP 다운로드" }));
+
+    expect(input).toBeDisabled();
+    await user.upload(
+      input,
+      new File(["not pdf"], "memo.txt", { type: "text/plain" }),
+    );
+    fireEvent.drop(screen.getByLabelText("PDF 업로드"), {
+      dataTransfer: {
+        files: [new File(["not pdf"], "memo.txt", { type: "text/plain" })],
+        types: ["Files"],
+      },
+    });
+
+    expect(mockValidatePdfFile).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("PDF 파일만 선택할 수 있습니다.")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.getByRole("status")).toHaveTextContent("ZIP 파일 생성 진행률 0%");
+
+    resolveDownload({
+      fileName: "수업자료-png-1080px.zip",
+      blob: new Blob(["zip-data"], { type: "application/zip" }),
+    });
+
+    await waitFor(() => {
+      expect(mockDownloadBlob).toHaveBeenCalledTimes(1);
+      expect(input).not.toBeDisabled();
+    });
+
+    mockValidatePdfFile.mockImplementation(async (file) => {
+      const { validatePdfFile: actualValidatePdfFile } = await vi.importActual<
+        typeof import("./lib/pdfValidation")
+      >("./lib/pdfValidation");
+
+      return actualValidatePdfFile(file);
+    });
+    await user.upload(input, createPdf());
+
+    expect(await screen.findByText("수업자료.pdf")).toBeVisible();
+  });
+
   it("변환 중 초기화하면 이전 변환 결과를 무시한다", async () => {
     const user = userEvent.setup();
     let resolveConversion: (pages: ReturnType<typeof makePngPages>) => void = () => {

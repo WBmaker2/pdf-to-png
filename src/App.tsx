@@ -208,7 +208,7 @@ export default function App() {
       <section className="converter-tool" aria-labelledby="app-title" aria-label="PDF 변환 작업">
         <FileDropzone
           selectedFile={selectedFile}
-          isDisabled={isConverting}
+          isDisabled={isConverting || isDownloading}
           validationResetId={validationResetId}
           onSelectFile={handleSelectFile}
           onRejectFile={(message) => setStatus({ tone: "error", message })}

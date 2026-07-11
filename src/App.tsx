@@ -7,6 +7,7 @@ import { buildDownloadBlob, downloadBlob } from "./lib/downloads";
 import type { ConversionProgress, RenderedPngPage } from "./types/conversion";
 
 const TARGET_LONG_EDGE = 1080;
+const ZIP_BUILD_ERROR_MESSAGE = "ZIP 파일 생성에 실패했습니다.";
 
 export default function App() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -147,14 +148,12 @@ export default function App() {
 
       downloadBlob(output);
       setStatusMessage(`${output.fileName} 다운로드를 시작했습니다.`);
-    } catch (error) {
+    } catch {
       if (downloadIdRef.current !== downloadId) {
         return;
       }
 
-      setStatusMessage(
-        error instanceof Error ? error.message : "다운로드 중 오류가 발생했습니다.",
-      );
+      setStatusMessage(ZIP_BUILD_ERROR_MESSAGE);
     } finally {
       if (downloadIdRef.current === downloadId) {
         if (downloadAbortControllerRef.current === abortController) {

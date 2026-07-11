@@ -165,6 +165,31 @@ describe("download packager", () => {
     expect(worker.terminate).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects a synchronous worker postMessage error safely and terminates once", async () => {
+    const worker = new FakeWorker();
+    worker.postMessage.mockImplementation(() => {
+      throw new Error("DataCloneError: raw worker failure");
+    });
+
+    await expect(
+      buildDownloadBlob("자료.pdf", makePages(), {
+        workerFactory: () => worker as unknown as Worker,
+      }),
+    ).rejects.toThrow("ZIP 파일 생성에 실패했습니다.");
+    expect(worker.terminate).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not expose a raw worker error message", async () => {
+    const worker = new FakeWorker();
+    const resultPromise = buildDownloadBlob("자료.pdf", makePages(), {
+      workerFactory: () => worker as unknown as Worker,
+    });
+
+    worker.emit({ type: "error", message: "JSZip exploded with raw details" });
+
+    await expect(resultPromise).rejects.toThrow("ZIP 파일 생성에 실패했습니다.");
+  });
+
   it("clicks and cleans up the anchor for direct downloads", () => {
     const blob = new Blob(["image"], { type: "image/png" });
     const { createObjectURL, objectUrl, revokeObjectURL } = stubObjectUrlApis();

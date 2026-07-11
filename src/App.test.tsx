@@ -135,6 +135,12 @@ describe("App", () => {
       options?.onProgress?.(60);
     });
     expect(screen.getByRole("button", { name: "ZIP 생성 중 60%" })).toBeDisabled();
+    expect(
+      screen.getByRole("progressbar", { name: "ZIP 파일 생성 진행률" }),
+    ).toHaveAttribute("value", "60");
+    expect(
+      screen.getByRole("progressbar", { name: "ZIP 파일 생성 진행률" }),
+    ).toHaveAttribute("max", "100");
 
     resolveDownload({
       fileName: "수업자료-png-1080p.zip",
@@ -177,7 +183,7 @@ describe("App", () => {
     const user = userEvent.setup();
     const pages = makePngPages();
     mockRenderPdfToPngs.mockResolvedValue(pages);
-    mockBuildDownloadBlob.mockRejectedValue(new Error("ZIP 생성에 실패했습니다."));
+    mockBuildDownloadBlob.mockRejectedValue(new Error("raw JSZip failure"));
 
     render(<App />);
 
@@ -188,7 +194,7 @@ describe("App", () => {
 
     await waitFor(() => {
       const status = screen.getByRole("status");
-      expect(status).toHaveTextContent("ZIP 생성에 실패했습니다.");
+      expect(status).toHaveTextContent("ZIP 파일 생성에 실패했습니다.");
       expect(status).toBeVisible();
     });
   });

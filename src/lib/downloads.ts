@@ -14,6 +14,7 @@ export type BuildDownloadOptions = {
 };
 
 const createAbortError = () => new DOMException("ZIP 생성이 취소되었습니다.", "AbortError");
+const ZIP_BUILD_ERROR_MESSAGE = "ZIP 파일 생성에 실패했습니다.";
 
 const createZipWorker = () =>
   new Worker(new URL("../workers/zip.worker.ts", import.meta.url), {
@@ -29,7 +30,13 @@ const buildZipBlob = (
   }
 
   return new Promise((resolve, reject) => {
-    const worker = (workerFactory ?? createZipWorker)();
+    let worker: Worker;
+    try {
+      worker = (workerFactory ?? createZipWorker)();
+    } catch {
+      reject(new Error(ZIP_BUILD_ERROR_MESSAGE));
+      return;
+    }
     let isSettled = false;
 
     const cleanup = () => {
@@ -66,17 +73,21 @@ const buildZipBlob = (
         return;
       }
 
-      settle(() => reject(new Error(message.message)));
+      settle(() => reject(new Error(ZIP_BUILD_ERROR_MESSAGE)));
     };
 
     const handleError = () => {
-      settle(() => reject(new Error("ZIP 생성에 실패했습니다.")));
+      settle(() => reject(new Error(ZIP_BUILD_ERROR_MESSAGE)));
     };
 
     worker.addEventListener("message", handleMessage);
     worker.addEventListener("error", handleError);
     signal?.addEventListener("abort", handleAbort, { once: true });
-    worker.postMessage({ type: "build", pages });
+    try {
+      worker.postMessage({ type: "build", pages });
+    } catch {
+      settle(() => reject(new Error(ZIP_BUILD_ERROR_MESSAGE)));
+    }
   });
 };
 

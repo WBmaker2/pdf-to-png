@@ -43,6 +43,20 @@ export function ResultList({
           {isDownloading ? `ZIP 생성 중 ${downloadProgress}%` : downloadLabel}
         </button>
       </div>
+      {isDownloading && (
+        <div className="download-progress">
+          <progress
+            aria-label="ZIP 파일 생성 진행률"
+            max={100}
+            value={downloadProgress}
+          >
+            {downloadProgress}%
+          </progress>
+          <p className="sr-only" role="status">
+            ZIP 파일 생성 진행률 {downloadProgress}%
+          </p>
+        </div>
+      )}
       <ul className="result-list">
         {pages.map((page) => (
           <li key={page.fileName}>

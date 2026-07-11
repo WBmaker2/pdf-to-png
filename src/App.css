@@ -254,6 +254,14 @@ input:focus-visible {
   margin-bottom: 10px;
 }
 
+.download-progress {
+  margin-bottom: 10px;
+}
+
+.download-progress progress {
+  width: 100%;
+}
+
 .result-list {
   margin: 0;
   padding: 0;
@@ -301,6 +309,18 @@ input:focus-visible {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+  }
+
+  .spin {
+    animation: none;
   }
 }
 

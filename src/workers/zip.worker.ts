@@ -4,6 +4,7 @@ import { createZipArchive } from "../lib/zipArchive";
 import type { ZipWorkerRequest, ZipWorkerResponse } from "../types/zipWorker";
 
 const worker = self as DedicatedWorkerGlobalScope;
+const ZIP_BUILD_ERROR_MESSAGE = "ZIP 파일 생성에 실패했습니다.";
 
 worker.addEventListener("message", async (event: MessageEvent<ZipWorkerRequest>) => {
   if (event.data.type !== "build") {
@@ -17,10 +18,10 @@ worker.addEventListener("message", async (event: MessageEvent<ZipWorkerRequest>)
     });
     const message: ZipWorkerResponse = { type: "complete", blob };
     worker.postMessage(message);
-  } catch (error) {
+  } catch {
     const message: ZipWorkerResponse = {
       type: "error",
-      message: error instanceof Error ? error.message : "ZIP 생성에 실패했습니다.",
+      message: ZIP_BUILD_ERROR_MESSAGE,
     };
     worker.postMessage(message);
   }

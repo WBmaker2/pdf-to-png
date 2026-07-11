@@ -1,12 +1,19 @@
-import { Archive, Download } from "lucide-react";
+import { Archive, Download, Loader2 } from "lucide-react";
 import type { RenderedPngPage } from "../types/conversion";
 
 type ResultListProps = {
   pages: RenderedPngPage[];
+  isDownloading: boolean;
+  downloadProgress: number;
   onDownload: () => void;
 };
 
-export function ResultList({ pages, onDownload }: ResultListProps) {
+export function ResultList({
+  pages,
+  isDownloading,
+  downloadProgress,
+  onDownload,
+}: ResultListProps) {
   if (pages.length === 0) {
     return null;
   }
@@ -20,13 +27,20 @@ export function ResultList({ pages, onDownload }: ResultListProps) {
           <h2>변환 완료</h2>
           <p>{pages.length}개의 PNG 파일이 준비되었습니다.</p>
         </div>
-        <button type="button" className="primary-button" onClick={onDownload}>
-          {pages.length === 1 ? (
+        <button
+          type="button"
+          className="primary-button"
+          disabled={isDownloading}
+          onClick={onDownload}
+        >
+          {isDownloading ? (
+            <Loader2 aria-hidden="true" className="spin" />
+          ) : pages.length === 1 ? (
             <Download aria-hidden="true" />
           ) : (
             <Archive aria-hidden="true" />
           )}
-          {downloadLabel}
+          {isDownloading ? `ZIP 생성 중 ${downloadProgress}%` : downloadLabel}
         </button>
       </div>
       <ul className="result-list">

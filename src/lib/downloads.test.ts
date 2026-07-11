@@ -1,7 +1,32 @@
-import JSZip from "jszip";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildDownloadBlob, downloadBlob } from "./downloads";
 import type { RenderedPngPage } from "../types/conversion";
+
+class FakeWorker extends EventTarget {
+  postMessage = vi.fn();
+  terminate = vi.fn();
+
+  emit(message: unknown) {
+    this.dispatchEvent(new MessageEvent("message", { data: message }));
+  }
+}
+
+const makePages = (): RenderedPngPage[] => [
+  {
+    pageIndex: 0,
+    fileName: "자료-00.png",
+    blob: new Blob(["page-0"], { type: "image/png" }),
+    width: 1920,
+    height: 1080,
+  },
+  {
+    pageIndex: 1,
+    fileName: "자료-01.png",
+    blob: new Blob(["page-1"], { type: "image/png" }),
+    width: 1920,
+    height: 1080,
+  },
+];
 
 const originalCreateObjectURL = URL.createObjectURL;
 const originalRevokeObjectURL = URL.revokeObjectURL;
@@ -74,14 +99,70 @@ describe("download packager", () => {
       },
     ];
 
-    const result = await buildDownloadBlob("자료.pdf", pages);
+    const worker = new FakeWorker();
+    const resultPromise = buildDownloadBlob("자료.pdf", pages, {
+      workerFactory: () => worker as unknown as Worker,
+    });
+    worker.emit({
+      type: "progress",
+      percent: 50,
+    });
+    worker.emit({
+      type: "complete",
+      blob: new Blob(["zip-data"], { type: "application/zip" }),
+    });
+    const result = await resultPromise;
 
     expect(result.fileName).toBe("자료-png-1080p.zip");
     expect(result.blob.type).toBe("application/zip");
+    expect(worker.postMessage).toHaveBeenCalledWith({ type: "build", pages });
+    expect(worker.terminate).toHaveBeenCalledTimes(1);
+  });
 
-    const zip = await JSZip.loadAsync(result.blob);
-    const entries = Object.keys(zip.files).filter((entry) => !zip.files[entry].dir);
-    expect(entries.sort()).toEqual(["자료-00.png", "자료-01.png"]);
+  it("reports progress from an injected zip worker", async () => {
+    const worker = new FakeWorker();
+    const onProgress = vi.fn();
+    const resultPromise = buildDownloadBlob("자료.pdf", makePages(), {
+      onProgress,
+      workerFactory: () => worker as unknown as Worker,
+    });
+
+    worker.emit({ type: "progress", percent: 42 });
+    worker.emit({
+      type: "complete",
+      blob: new Blob(["zip-data"], { type: "application/zip" }),
+    });
+
+    await resultPromise;
+    expect(onProgress).toHaveBeenCalledWith(42);
+  });
+
+  it("rejects an already-aborted archive request with AbortError", async () => {
+    const workerFactory = vi.fn(() => new FakeWorker() as unknown as Worker);
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      buildDownloadBlob("자료.pdf", makePages(), {
+        signal: controller.signal,
+        workerFactory,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(workerFactory).not.toHaveBeenCalled();
+  });
+
+  it("terminates the injected worker when an archive request is aborted", async () => {
+    const worker = new FakeWorker();
+    const controller = new AbortController();
+    const resultPromise = buildDownloadBlob("자료.pdf", makePages(), {
+      signal: controller.signal,
+      workerFactory: () => worker as unknown as Worker,
+    });
+
+    controller.abort();
+
+    await expect(resultPromise).rejects.toMatchObject({ name: "AbortError" });
+    expect(worker.terminate).toHaveBeenCalledTimes(1);
   });
 
   it("clicks and cleans up the anchor for direct downloads", () => {

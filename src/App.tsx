@@ -12,18 +12,31 @@ export default function App() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [pages, setPages] = useState<RenderedPngPage[]>([]);
   const [isConverting, setIsConverting] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
   const [progress, setProgress] = useState<ConversionProgress | null>(null);
   const [statusMessage, setStatusMessage] = useState("PDF 파일을 선택해 주세요.");
   const conversionIdRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const downloadIdRef = useRef(0);
+  const downloadAbortControllerRef = useRef<AbortController | null>(null);
 
   function cancelActiveConversion() {
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
   }
 
+  function cancelActiveDownload() {
+    downloadAbortControllerRef.current?.abort();
+    downloadAbortControllerRef.current = null;
+    downloadIdRef.current += 1;
+    setIsDownloading(false);
+    setDownloadProgress(0);
+  }
+
   function handleSelectFile(file: File) {
     cancelActiveConversion();
+    cancelActiveDownload();
     conversionIdRef.current += 1;
     setSelectedFile(file);
     setPages([]);
@@ -34,6 +47,7 @@ export default function App() {
 
   function handleReset() {
     cancelActiveConversion();
+    cancelActiveDownload();
     conversionIdRef.current += 1;
     setSelectedFile(null);
     setPages([]);
@@ -105,14 +119,50 @@ export default function App() {
       return;
     }
 
+    if (isDownloading || downloadAbortControllerRef.current) {
+      return;
+    }
+
+    const downloadId = downloadIdRef.current + 1;
+    downloadIdRef.current = downloadId;
+    const abortController = new AbortController();
+    downloadAbortControllerRef.current = abortController;
+    setIsDownloading(true);
+    setDownloadProgress(0);
+    setStatusMessage("ZIP 파일을 생성하고 있습니다.");
+
     try {
-      const output = await buildDownloadBlob(selectedFile.name, pages);
+      const output = await buildDownloadBlob(selectedFile.name, pages, {
+        signal: abortController.signal,
+        onProgress: (percent) => {
+          if (downloadIdRef.current === downloadId) {
+            setDownloadProgress(Math.round(percent));
+          }
+        },
+      });
+
+      if (downloadIdRef.current !== downloadId) {
+        return;
+      }
+
       downloadBlob(output);
       setStatusMessage(`${output.fileName} 다운로드를 시작했습니다.`);
     } catch (error) {
+      if (downloadIdRef.current !== downloadId) {
+        return;
+      }
+
       setStatusMessage(
         error instanceof Error ? error.message : "다운로드 중 오류가 발생했습니다.",
       );
+    } finally {
+      if (downloadIdRef.current === downloadId) {
+        if (downloadAbortControllerRef.current === abortController) {
+          downloadAbortControllerRef.current = null;
+        }
+        setIsDownloading(false);
+        setDownloadProgress(0);
+      }
     }
   }
 
@@ -141,7 +191,12 @@ export default function App() {
           onConvert={handleConvert}
           onReset={handleReset}
         />
-        <ResultList pages={pages} onDownload={handleDownload} />
+        <ResultList
+          pages={pages}
+          isDownloading={isDownloading}
+          downloadProgress={downloadProgress}
+          onDownload={handleDownload}
+        />
       </section>
 
       <p className="status-message" role="status" aria-live="polite">

@@ -4,10 +4,13 @@ import { FileDropzone } from "./components/FileDropzone";
 import { ResultList } from "./components/ResultList";
 import { renderPdfToPngs } from "./lib/pdfRender";
 import { buildDownloadBlob, downloadBlob } from "./lib/downloads";
+import {
+  getConversionErrorMessage,
+  getDownloadErrorMessage,
+} from "./lib/userMessages";
 import type { ConversionProgress, RenderedPngPage } from "./types/conversion";
 
 const TARGET_LONG_EDGE = 1080;
-const ZIP_BUILD_ERROR_MESSAGE = "ZIP 파일 생성에 실패했습니다.";
 
 export default function App() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -101,9 +104,7 @@ export default function App() {
       }
 
       setProgress(null);
-      setStatusMessage(
-        error instanceof Error ? error.message : "변환 중 오류가 발생했습니다.",
-      );
+      setStatusMessage(getConversionErrorMessage(error));
     } finally {
       if (conversionIdRef.current === conversionId) {
         if (abortControllerRef.current === abortController) {
@@ -148,12 +149,12 @@ export default function App() {
 
       downloadBlob(output);
       setStatusMessage(`${output.fileName} 다운로드를 시작했습니다.`);
-    } catch {
+    } catch (error) {
       if (downloadIdRef.current !== downloadId) {
         return;
       }
 
-      setStatusMessage(ZIP_BUILD_ERROR_MESSAGE);
+      setStatusMessage(getDownloadErrorMessage(error));
     } finally {
       if (downloadIdRef.current === downloadId) {
         if (downloadAbortControllerRef.current === abortController) {

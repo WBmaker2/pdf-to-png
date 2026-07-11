@@ -7,8 +7,14 @@ vi.mock("./lib/downloads", () => ({
   buildDownloadBlob: vi.fn(),
   downloadBlob: vi.fn(),
 }));
+vi.mock("./lib/pdfValidation", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./lib/pdfValidation")>();
+
+  return { ...actual, validatePdfFile: vi.fn() };
+});
 import { buildDownloadBlob, downloadBlob } from "./lib/downloads";
 import { renderPdfToPngs } from "./lib/pdfRender";
+import { PdfValidationError, validatePdfFile } from "./lib/pdfValidation";
 import App from "./App";
 
 const makePngPages = () => [
@@ -31,9 +37,10 @@ const makePngPages = () => [
 const mockRenderPdfToPngs = vi.mocked(renderPdfToPngs);
 const mockBuildDownloadBlob = vi.mocked(buildDownloadBlob);
 const mockDownloadBlob = vi.mocked(downloadBlob);
+const mockValidatePdfFile = vi.mocked(validatePdfFile);
 
 const createPdf = () =>
-  new File(["pdf"], "수업자료.pdf", {
+  new File(["%PDF-1.7"], "수업자료.pdf", {
     type: "application/pdf",
   });
 
@@ -42,6 +49,8 @@ describe("App", () => {
     mockRenderPdfToPngs.mockReset();
     mockBuildDownloadBlob.mockReset();
     mockDownloadBlob.mockReset();
+    mockValidatePdfFile.mockReset();
+    mockValidatePdfFile.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -223,6 +232,9 @@ describe("App", () => {
 
   it("PDF가 아닌 파일을 업로드하면 상태 메시지를 표시한다", async () => {
     const user = userEvent.setup({ applyAccept: false });
+    mockValidatePdfFile.mockRejectedValue(
+      new PdfValidationError("PDF 파일만 선택할 수 있습니다."),
+    );
 
     render(<App />);
 
@@ -237,6 +249,68 @@ describe("App", () => {
       const status = screen.getByRole("status");
       expect(status).toHaveTextContent("PDF 파일만 선택할 수 있습니다.");
       expect(status).toBeVisible();
+    });
+  });
+
+  it("변환 오류를 고정된 한국어 안내로 표시한다", async () => {
+    const user = userEvent.setup();
+    mockRenderPdfToPngs.mockRejectedValue({
+      name: "PasswordException",
+      message: "No password given",
+    });
+
+    render(<App />);
+
+    await user.upload(screen.getByLabelText("PDF 파일 선택"), createPdf());
+    await user.click(screen.getByRole("button", { name: "PNG로 변환하기" }));
+
+    await waitFor(() => {
+      const status = screen.getByRole("status");
+      expect(status).toHaveTextContent(
+        "암호로 보호된 PDF는 변환할 수 없습니다. 암호를 해제한 뒤 다시 시도해 주세요.",
+      );
+      expect(status).not.toHaveTextContent("No password given");
+    });
+  });
+
+  it("늦게 끝난 이전 파일 검증 결과를 무시한다", async () => {
+    let resolveFirst: () => void = () => {
+      throw new Error("first validator was not set");
+    };
+    let resolveSecond: () => void = () => {
+      throw new Error("second validator was not set");
+    };
+    mockValidatePdfFile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    mockValidatePdfFile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSecond = resolve;
+        }),
+    );
+
+    render(<App />);
+
+    const input = screen.getByLabelText("PDF 파일 선택");
+    fireEvent.change(input, { target: { files: [createPdf()] } });
+    expect(input).toBeDisabled();
+    fireEvent.change(input, {
+      target: { files: [new File(["%PDF-1.7"], "새자료.pdf", { type: "application/pdf" })] },
+    });
+
+    resolveSecond();
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("새자료.pdf 파일이 선택되었습니다.");
+    });
+    resolveFirst();
+
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("새자료.pdf 파일이 선택되었습니다.");
+      expect(input).not.toBeDisabled();
     });
   });
 });

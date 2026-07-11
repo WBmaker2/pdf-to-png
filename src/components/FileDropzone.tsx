@@ -1,4 +1,7 @@
+import { useRef, useState } from "react";
 import { FileUp } from "lucide-react";
+import { validatePdfFile } from "../lib/pdfValidation";
+import { getConversionErrorMessage } from "../lib/userMessages";
 
 type FileDropzoneProps = {
   selectedFile: File | null;
@@ -7,27 +10,43 @@ type FileDropzoneProps = {
   onRejectFile: (message: string) => void;
 };
 
-function isPdf(file: File) {
-  return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-}
-
 export function FileDropzone({
   selectedFile,
   isDisabled = false,
   onSelectFile,
   onRejectFile,
 }: FileDropzoneProps) {
-  function handleFile(file: File | undefined) {
+  const [isValidating, setIsValidating] = useState(false);
+  const validationIdRef = useRef(0);
+  const isSelectionDisabled = isDisabled || isValidating;
+
+  async function handleFile(file: File | undefined) {
     if (!file) {
       return;
     }
 
-    if (!isPdf(file)) {
-      onRejectFile("PDF 파일만 선택할 수 있습니다.");
-      return;
-    }
+    const validationId = validationIdRef.current + 1;
+    validationIdRef.current = validationId;
+    setIsValidating(true);
 
-    onSelectFile(file);
+    try {
+      await validatePdfFile(file);
+      if (validationIdRef.current !== validationId) {
+        return;
+      }
+
+      onSelectFile(file);
+    } catch (error) {
+      if (validationIdRef.current !== validationId) {
+        return;
+      }
+
+      onRejectFile(getConversionErrorMessage(error));
+    } finally {
+      if (validationIdRef.current === validationId) {
+        setIsValidating(false);
+      }
+    }
   }
 
   return (
@@ -37,12 +56,12 @@ export function FileDropzone({
         <h2>PDF 파일 선택</h2>
         <p>파일은 브라우저 안에서만 처리됩니다.</p>
       </div>
-      <label className={`file-button${isDisabled ? " is-disabled" : ""}`}>
+      <label className={`file-button${isSelectionDisabled ? " is-disabled" : ""}`}>
         PDF 파일 선택
         <input
           aria-label="PDF 파일 선택"
           accept="application/pdf,.pdf"
-          disabled={isDisabled}
+          disabled={isSelectionDisabled}
           type="file"
           onChange={(event) => {
             handleFile(event.currentTarget.files?.[0]);

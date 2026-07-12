@@ -23,6 +23,12 @@ export type RenderPdfOptions = {
 const createAbortError = () =>
   new DOMException("변환이 취소되었습니다.", "AbortError");
 
+const isAbortError = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  "name" in error &&
+  error.name === "AbortError";
+
 const throwIfAborted = (signal?: AbortSignal) => {
   if (signal?.aborted) {
     throw createAbortError();
@@ -51,13 +57,22 @@ export const renderPdfToPngs = async (
   throwIfAborted(signal);
   const loadingTask = pdfjsLib.getDocument({ data });
 
-  const destroyLoadingTask = async () => {
-    if (typeof loadingTask.destroy === "function") {
-      await loadingTask.destroy();
+  let loadingTaskDestroyPromise: Promise<void> | null = null;
+  const destroyLoadingTask = (): Promise<void> => {
+    if (!loadingTaskDestroyPromise) {
+      try {
+        loadingTaskDestroyPromise = typeof loadingTask.destroy === "function"
+          ? Promise.resolve(loadingTask.destroy())
+          : Promise.resolve();
+      } catch (error) {
+        loadingTaskDestroyPromise = Promise.reject(error);
+      }
     }
+
+    return loadingTaskDestroyPromise;
   };
   const handleLoadingAbort = () => {
-    void destroyLoadingTask();
+    void destroyLoadingTask().catch(() => undefined);
   };
   signal?.addEventListener("abort", handleLoadingAbort, { once: true });
 
@@ -66,30 +81,42 @@ export const renderPdfToPngs = async (
     doc = await loadingTask.promise;
   } catch (error) {
     signal?.removeEventListener("abort", handleLoadingAbort);
-    if (signal?.aborted) {
-      throw createAbortError();
+    const primaryError = signal?.aborted || isAbortError(error)
+      ? createAbortError()
+      : error;
+    try {
+      await destroyLoadingTask();
+    } catch {
+      // Preserve the loading failure or the requested cancellation.
     }
-    await destroyLoadingTask();
-    throw error;
+    throw primaryError;
   }
   signal?.removeEventListener("abort", handleLoadingAbort);
-  throwIfAborted(signal);
 
   if (!doc) {
-    await destroyLoadingTask();
-    throw new Error("pdf 문서 로드에 실패했습니다.");
+    const documentError = new Error("pdf 문서 로드에 실패했습니다.");
+    try {
+      await destroyLoadingTask();
+    } catch {
+      // Preserve the missing-document error.
+    }
+    throw documentError;
   }
 
   const pdf = doc;
   const pages: RenderedPngPage[] = [];
   let renderedBytes = 0;
+  let primaryError: unknown;
   try {
+    // Keep the post-load abort check inside the document cleanup boundary.
+    throwIfAborted(signal);
     assertPdfPageCount(pdf.numPages);
 
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
       throwIfAborted(signal);
       let page: pdfjsLib.PDFPageProxy | null = null;
       let canvas: HTMLCanvasElement | null = null;
+      let pagePrimaryError: unknown;
 
       try {
         page = await pdf.getPage(pageNumber);
@@ -150,21 +177,51 @@ export const renderPdfToPngs = async (
           currentPage: pageNumber,
           totalPages: pdf.numPages,
         });
+      } catch (error) {
+        pagePrimaryError = signal?.aborted ? createAbortError() : error;
+        throw pagePrimaryError;
       } finally {
-        if (typeof page?.cleanup === "function") {
-          page.cleanup();
+        let pageCleanupFailed = false;
+        let pageCleanupError: unknown;
+        try {
+          if (typeof page?.cleanup === "function") {
+            await page.cleanup();
+          }
+        } catch (error) {
+          pageCleanupFailed = true;
+          pageCleanupError = error;
         }
         if (canvas) {
           canvas.width = 0;
           canvas.height = 0;
         }
+        if (pagePrimaryError === undefined && pageCleanupFailed) {
+          throw pageCleanupError;
+        }
       }
     }
+  } catch (error) {
+    primaryError = error;
+    throw error;
   } finally {
+    let cleanupFailed = false;
+    let cleanupError: unknown;
     try {
       await pdf.cleanup();
-    } finally {
+    } catch (error) {
+      cleanupFailed = true;
+      cleanupError = error;
+    }
+    try {
       await destroyLoadingTask();
+    } catch (error) {
+      if (!cleanupFailed) {
+        cleanupFailed = true;
+        cleanupError = error;
+      }
+    }
+    if (primaryError === undefined && cleanupFailed) {
+      throw cleanupError;
     }
   }
 

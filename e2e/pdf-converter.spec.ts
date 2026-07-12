@@ -49,18 +49,20 @@ test("converts a real three-page PDF and downloads its PNG ZIP", async ({ page }
   await expect(page.getByAltText("sample-00.png 미리보기")).toBeVisible();
   await expect(page.locator(".result-card img")).toHaveCount(3);
   await expect(page.locator(".result-card img").nth(2)).toBeVisible();
-  expect(
-    await page.locator(".result-card img").evaluateAll((images) =>
-      images.map((image) => ({
-        width: (image as HTMLImageElement).naturalWidth,
-        height: (image as HTMLImageElement).naturalHeight,
-      })),
-    ),
-  ).toEqual([
-    { width: 835, height: 1080 },
-    { width: 835, height: 1080 },
-    { width: 835, height: 1080 },
-  ]);
+  await expect
+    .poll(() =>
+      page.locator(".result-card img").evaluateAll((images) =>
+        images.map((image) => ({
+          width: (image as HTMLImageElement).naturalWidth,
+          height: (image as HTMLImageElement).naturalHeight,
+        })),
+      ),
+    )
+    .toEqual([
+      { width: 835, height: 1080 },
+      { width: 835, height: 1080 },
+      { width: 835, height: 1080 },
+    ]);
 
   const [download] = await Promise.all([
     page.waitForEvent("download"),

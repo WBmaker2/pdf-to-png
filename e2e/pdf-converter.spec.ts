@@ -130,10 +130,25 @@ test("converts a real three-page PDF and downloads its PNG ZIP", async ({ page }
     ]);
   console.log(`[e2e timing] results-ready-ms=${Math.round(performance.now() - startedAt)}`);
 
-  const [download] = await Promise.all([
-    page.waitForEvent("download"),
-    page.getByRole("button", { name: "ZIP 다운로드" }).click(),
-  ]);
+  const downloadButton = page.getByRole("button", { name: "ZIP 다운로드" });
+  const statusMessage = page.locator(".status-message");
+  const downloadPromise = page.waitForEvent("download");
+  await downloadButton.click();
+  try {
+    await expect(statusMessage).toBeVisible({ timeout: 15_000 });
+  } catch (error) {
+    const normalize = (value: string | null) => value?.replace(/\s+/g, " ").trim() || "<none>";
+    console.log(
+      `[e2e diagnostics] download-status-timeout button=${JSON.stringify(normalize(await downloadButton.textContent()))} status=${JSON.stringify(normalize(await statusMessage.textContent()))} consoleErrors=${JSON.stringify(consoleErrors.map(normalize))} pageErrors=${JSON.stringify(pageErrors.map(normalize))}`,
+    );
+    throw error;
+  }
+  const normalizedStatusText = (await statusMessage.textContent())?.replace(/\s+/g, " ").trim() ?? "";
+  console.log(
+    `[e2e timing] download-status-ms=${Math.round(performance.now() - startedAt)} text=${normalizedStatusText}`,
+  );
+  await expect(statusMessage).toContainText("sample-png-1080px.zip 다운로드를 시작했습니다.");
+  const download = await downloadPromise;
   await download.path();
   console.log(`[e2e timing] download-ready-ms=${Math.round(performance.now() - startedAt)}`);
   expect(await download.failure()).toBeNull();

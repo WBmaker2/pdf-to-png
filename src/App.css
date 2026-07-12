@@ -573,6 +573,7 @@ progress {
   }
 
   .app-header-main {
+    gap: 4px;
     align-items: flex-start;
   }
 

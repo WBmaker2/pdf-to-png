@@ -52,6 +52,15 @@ test("keeps update history within a 320px viewport", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 844 });
   await page.goto("/");
 
+  const headingMetrics = await page.getByRole("heading", { name: "PDF PNG 변환기" }).evaluate(
+    (element) => {
+      const rect = element.getBoundingClientRect();
+      const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight);
+      return { height: rect.height, lineHeight };
+    },
+  );
+  expect(Math.abs(headingMetrics.height - headingMetrics.lineHeight)).toBeLessThanOrEqual(1);
+
   await page.getByRole("button", { name: "업데이트 내역" }).click();
   const dialog = page.getByRole("dialog", { name: "업데이트 내역" });
   await expect(dialog).toBeVisible();

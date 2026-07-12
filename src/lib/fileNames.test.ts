@@ -31,16 +31,22 @@ describe("file name utilities", () => {
     expect(safeBaseName("///")).toBe("document");
   });
 
-  it("calculates page index width", () => {
+  it("keeps two digits through 100 pages and expands at 101 pages", () => {
     expect(pageIndexWidth(1)).toBe(2);
-    expect(pageIndexWidth(12)).toBe(2);
+    expect(pageIndexWidth(10)).toBe(2);
+    expect(pageIndexWidth(100)).toBe(2);
+    expect(pageIndexWidth(101)).toBe(3);
     expect(pageIndexWidth(120)).toBe(3);
   });
 
-  it("builds png file name with zero-padded page index", () => {
-    expect(buildPngFileName("수업자료.pdf", 0, 4)).toBe("수업자료-00.png");
-    expect(buildPngFileName("수업자료.pdf", 3, 4)).toBe("수업자료-03.png");
-    expect(buildPngFileName("자료.pdf", 104, 120)).toBe("자료-104.png");
+  it("builds exact zero-based filenames at page-count boundaries", () => {
+    expect(buildPngFileName("자료.pdf", 0, 1)).toBe("자료-00.png");
+    expect(buildPngFileName("자료.pdf", 0, 10)).toBe("자료-00.png");
+    expect(buildPngFileName("자료.pdf", 9, 10)).toBe("자료-09.png");
+    expect(buildPngFileName("자료.pdf", 0, 100)).toBe("자료-00.png");
+    expect(buildPngFileName("자료.pdf", 99, 100)).toBe("자료-99.png");
+    expect(buildPngFileName("자료.pdf", 0, 101)).toBe("자료-000.png");
+    expect(buildPngFileName("자료.pdf", 100, 101)).toBe("자료-100.png");
   });
 
   it("builds zip file name", () => {

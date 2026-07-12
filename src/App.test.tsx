@@ -59,6 +59,22 @@ const makePngPages = () => [
   },
 ];
 
+const makeDeferred = <T,>() => {
+  let resolve: (value: T) => void = () => {
+    throw new Error("resolver was not set");
+  };
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+
+  return { promise, resolve };
+};
+
+const flushMicrotasks = async () => {
+  await Promise.resolve();
+  await Promise.resolve();
+};
+
 const mockRenderPdfToPngs = lazyLoadMocks.renderPdfToPngs;
 const mockBuildDownloadBlob = lazyLoadMocks.buildDownloadBlob;
 const mockDownloadBlob = lazyLoadMocks.downloadBlob;
@@ -377,6 +393,65 @@ describe("App", () => {
       expect(screen.queryByText("수업자료-00.png")).not.toBeInTheDocument();
     });
     expect(screen.getByRole("status")).toHaveTextContent("PDF 파일을 선택해 주세요.");
+  });
+
+  it("언마운트 시 진행 중 변환을 취소하고 늦은 결과를 무시한다", async () => {
+    const user = userEvent.setup();
+    const conversion = makeDeferred<ReturnType<typeof makePngPages>>();
+    mockRenderPdfToPngs.mockReturnValue(conversion.promise);
+
+    const view = render(<App />);
+    await user.upload(screen.getByLabelText("PDF 파일 선택"), createPdf());
+    await user.click(screen.getByRole("button", { name: "PNG로 변환하기" }));
+    await waitFor(() => expect(mockRenderPdfToPngs).toHaveBeenCalledTimes(1));
+
+    const signal = mockRenderPdfToPngs.mock.calls[0][1]?.signal as AbortSignal;
+    view.unmount();
+
+    expect(signal.aborted).toBe(true);
+    act(() => {
+      conversion.resolve(makePngPages());
+    });
+    await act(async () => {
+      await flushMicrotasks();
+    });
+
+    expect(mockDownloadBlob).not.toHaveBeenCalled();
+    expect(view.container).toBeEmptyDOMElement();
+  });
+
+  it("언마운트 시 진행 중 ZIP 생성을 취소하고 늦은 결과를 다운로드하지 않는다", async () => {
+    const user = userEvent.setup();
+    mockRenderPdfToPngs.mockResolvedValue(makePngPages());
+    const download = makeDeferred<{
+      fileName: string;
+      blob: Blob;
+    }>();
+    mockBuildDownloadBlob.mockReturnValue(download.promise);
+
+    const view = render(<App />);
+    await user.upload(screen.getByLabelText("PDF 파일 선택"), createPdf());
+    await user.click(screen.getByRole("button", { name: "PNG로 변환하기" }));
+    await screen.findByText("수업자료-00.png");
+    await user.click(screen.getByRole("button", { name: "ZIP 다운로드" }));
+    await waitFor(() => expect(mockBuildDownloadBlob).toHaveBeenCalledTimes(1));
+
+    const signal = mockBuildDownloadBlob.mock.calls[0][2]?.signal as AbortSignal;
+    view.unmount();
+
+    expect(signal.aborted).toBe(true);
+    act(() => {
+      download.resolve({
+        fileName: "수업자료-png-1080px.zip",
+        blob: new Blob(["zip-data"], { type: "application/zip" }),
+      });
+    });
+    await act(async () => {
+      await flushMicrotasks();
+    });
+
+    expect(mockDownloadBlob).not.toHaveBeenCalled();
+    expect(view.container).toBeEmptyDOMElement();
   });
 
   it("다운로드 오류를 상태 메시지로 표시한다", async () => {

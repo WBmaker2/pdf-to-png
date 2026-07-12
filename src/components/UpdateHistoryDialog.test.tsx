@@ -31,6 +31,7 @@ describe("UpdateHistoryDialog", () => {
       dialog.textContent?.indexOf("2026-05-03") ?? -1,
     );
     expect(dialog).toHaveTextContent("대용량 PDF 보호와 취소 가능한 ZIP 생성을 추가했습니다.");
+    expect(dialog).toHaveTextContent("앱 종료와 PDF 페이지 처리 중 취소 안정성을 강화했습니다.");
     expect(dialog).toHaveTextContent("PDF 각 페이지를 긴 변 1080px PNG로 변환하는 기능을 만들었습니다.");
   });
 

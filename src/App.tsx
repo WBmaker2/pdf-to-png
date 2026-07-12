@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ConversionPanel } from "./components/ConversionPanel";
 import { FileDropzone } from "./components/FileDropzone";
 import { ResultList } from "./components/ResultList";
@@ -38,6 +38,18 @@ export default function App() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const downloadIdRef = useRef(0);
   const downloadAbortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      conversionIdRef.current += 1;
+      downloadIdRef.current += 1;
+      conversionInFlightRef.current = false;
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+      downloadAbortControllerRef.current?.abort();
+      downloadAbortControllerRef.current = null;
+    };
+  }, []);
 
   function cancelActiveConversion() {
     abortControllerRef.current?.abort();
@@ -117,7 +129,7 @@ export default function App() {
         },
       });
 
-      if (conversionIdRef.current !== conversionId) {
+      if (conversionIdRef.current !== conversionId || abortController.signal.aborted) {
         return;
       }
 
@@ -182,7 +194,7 @@ export default function App() {
         },
       });
 
-      if (downloadIdRef.current !== downloadId) {
+      if (downloadIdRef.current !== downloadId || abortController.signal.aborted) {
         return;
       }
 

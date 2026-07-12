@@ -35,17 +35,91 @@ const throwIfAborted = (signal?: AbortSignal) => {
   }
 };
 
-const canvasToPngBlob = (canvas: HTMLCanvasElement): Promise<Blob> =>
-  new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        reject(new Error("PNG 생성에 실패했습니다."));
+export const waitForAbortable = <T,>(
+  operation: () => PromiseLike<T>,
+  signal?: AbortSignal,
+  onLateResolve?: (value: T) => unknown,
+): Promise<T> => {
+  if (!signal) {
+    return Promise.resolve().then(operation);
+  }
+
+  if (signal.aborted) {
+    return Promise.reject(createAbortError());
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      signal.removeEventListener("abort", handleAbort);
+    };
+    const settle = (callback: () => void) => {
+      if (settled) {
         return;
       }
 
-      resolve(blob);
-    }, "image/png");
+      settled = true;
+      cleanup();
+      callback();
+    };
+    const handleAbort = () => {
+      settle(() => reject(createAbortError()));
+    };
+
+    signal.addEventListener("abort", handleAbort, { once: true });
+    if (signal.aborted) {
+      handleAbort();
+      return;
+    }
+
+    let operationPromise: PromiseLike<T>;
+    try {
+      operationPromise = operation();
+    } catch (error) {
+      settle(() => reject(error));
+      return;
+    }
+
+    void Promise.resolve(operationPromise).then(
+      (value) => {
+        if (settled) {
+          if (onLateResolve) {
+            try {
+              void Promise.resolve(onLateResolve(value)).catch(() => undefined);
+            } catch {
+              // Ignore cleanup failures for a value that arrived after abort.
+            }
+          }
+          return;
+        }
+
+        settle(() => resolve(value));
+      },
+      (error) => {
+        settle(() => reject(signal.aborted ? createAbortError() : error));
+      },
+    );
   });
+};
+
+const canvasToPngBlob = (
+  canvas: HTMLCanvasElement,
+  signal?: AbortSignal,
+): Promise<Blob> =>
+  waitForAbortable(
+    () =>
+      new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            reject(new Error("PNG 생성에 실패했습니다."));
+            return;
+          }
+
+          resolve(blob);
+        }, "image/png");
+      }),
+    signal,
+  );
 
 export const renderPdfToPngs = async (
   file: File,
@@ -119,7 +193,11 @@ export const renderPdfToPngs = async (
       let pagePrimaryError: unknown;
 
       try {
-        page = await pdf.getPage(pageNumber);
+        page = await waitForAbortable(
+          () => pdf.getPage(pageNumber),
+          signal,
+          (latePage) => latePage.cleanup?.(),
+        );
         throwIfAborted(signal);
         const unscaledViewport = page.getViewport({ scale: 1 });
         const scale = getScaleForLongEdge(
@@ -162,7 +240,7 @@ export const renderPdfToPngs = async (
           signal?.removeEventListener("abort", handleRenderAbort);
         }
 
-        const blob = await canvasToPngBlob(canvas);
+        const blob = await canvasToPngBlob(canvas, signal);
         throwIfAborted(signal);
         assertRenderedPngBytes(renderedBytes + blob.size);
         renderedBytes += blob.size;

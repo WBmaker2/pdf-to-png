@@ -8,7 +8,7 @@ const pdfjsMock = vi.hoisted(() => ({
 
 vi.mock("pdfjs-dist", () => pdfjsMock);
 
-import { renderPdfToPngs } from "./pdfRender";
+import { renderPdfToPngs, waitForAbortable } from "./pdfRender";
 
 type LoadingTaskMock = {
   promise: Promise<unknown>;
@@ -42,21 +42,34 @@ const createDeferred = <T,>() => {
   return { promise, reject, resolve };
 };
 
-const createCanvas = () => {
+const createCanvas = (
+  toBlob: (callback: BlobCallback) => void = (callback) => {
+    callback(new Blob(["png"], { type: "image/png" }));
+  },
+) => {
   const context = {
     fillRect: vi.fn(),
     fillStyle: "",
   } as unknown as CanvasRenderingContext2D;
   const canvas = {
     getContext: vi.fn(() => context),
-    toBlob: vi.fn((callback: BlobCallback) => {
-      callback(new Blob(["png"], { type: "image/png" }));
-    }),
+    toBlob: vi.fn(toBlob),
     width: 0,
     height: 0,
   } as unknown as HTMLCanvasElement;
 
   return { canvas, context };
+};
+
+const createDelayedBlobCanvas = () => {
+  let resolveToBlob: BlobCallback = () => {
+    throw new Error("toBlob callback was not set");
+  };
+  const { canvas, context } = createCanvas((callback) => {
+    resolveToBlob = callback;
+  });
+
+  return { canvas, context, resolveToBlob: (blob: Blob | null) => resolveToBlob(blob) };
 };
 
 const createPage = (renderTask: { promise: Promise<unknown>; cancel: ReturnType<typeof vi.fn> }) => ({
@@ -160,7 +173,92 @@ describe("getScaleForLongEdge", () => {
   });
 });
 
+describe("waitForAbortable", () => {
+  it("rejects an already-aborted operation without starting it", async () => {
+    const controller = new AbortController();
+    const operation = vi.fn().mockResolvedValue("done");
+    controller.abort();
+
+    await expect(waitForAbortable(operation, controller.signal)).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    expect(operation).not.toHaveBeenCalled();
+  });
+
+  it("removes its abort listener when the operation settles", async () => {
+    const controller = new AbortController();
+    const removeEventListener = vi.spyOn(controller.signal, "removeEventListener");
+
+    await expect(
+      waitForAbortable(() => Promise.resolve("done"), controller.signal),
+    ).resolves.toBe("done");
+
+    expect(removeEventListener).toHaveBeenCalledTimes(1);
+  });
+
+  it("handles a late rejection after abort", async () => {
+    const controller = new AbortController();
+    const operation = createDeferred<string>();
+    const result = waitForAbortable(() => operation.promise, controller.signal);
+
+    controller.abort();
+    await expect(result).rejects.toMatchObject({ name: "AbortError" });
+
+    operation.reject(new Error("late operation failure"));
+    await flushPromises();
+  });
+});
+
 describe("renderPdfToPngs lifecycle", () => {
+  it("rejects promptly and cleans up when getPage never resolves after abort", async () => {
+    const page = createPage({ cancel: vi.fn(), promise: Promise.resolve() });
+    const pdf = createPdf(page);
+    const getPageDeferred = createDeferred<PageMock>();
+    pdf.getPage.mockReturnValue(getPageDeferred.promise);
+    const destroy = vi.fn().mockResolvedValue(undefined);
+    const loadingTask = createLoadingTask(pdf, destroy);
+    pdfjsMock.getDocument.mockReturnValue(loadingTask);
+    const controller = new AbortController();
+    const renderPromise = renderPdfToPngs(
+      new File(["pdf"], "sample.pdf"),
+      renderOptions(controller.signal),
+    );
+
+    await vi.waitFor(() => expect(pdf.getPage).toHaveBeenCalledTimes(1));
+    controller.abort();
+
+    await expect(renderPromise).rejects.toMatchObject({ name: "AbortError" });
+    expect(pdf.cleanup).toHaveBeenCalledTimes(1);
+    expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects promptly and cleans up when toBlob callback is delayed after abort", async () => {
+    const renderTask = { cancel: vi.fn(), promise: Promise.resolve() };
+    const page = createPage(renderTask);
+    const pdf = createPdf(page);
+    const destroy = vi.fn().mockResolvedValue(undefined);
+    const loadingTask = createLoadingTask(pdf, destroy);
+    pdfjsMock.getDocument.mockReturnValue(loadingTask);
+    const delayedCanvas = createDelayedBlobCanvas();
+    document.createElement = vi.fn(() => delayedCanvas.canvas) as typeof document.createElement;
+    const controller = new AbortController();
+    const renderPromise = renderPdfToPngs(
+      new File(["pdf"], "sample.pdf"),
+      renderOptions(controller.signal),
+    );
+
+    await vi.waitFor(() => expect(delayedCanvas.canvas.toBlob).toHaveBeenCalledTimes(1));
+    controller.abort();
+
+    await expect(renderPromise).rejects.toMatchObject({ name: "AbortError" });
+    expect(page.cleanup).toHaveBeenCalledTimes(1);
+    expect(pdf.cleanup).toHaveBeenCalledTimes(1);
+    expect(destroy).toHaveBeenCalledTimes(1);
+
+    delayedCanvas.resolveToBlob(new Blob(["late-png"], { type: "image/png" }));
+    await flushPromises();
+  });
+
   it("destroys the loading task once when abort happens immediately after document load", async () => {
     const page = createPage({ cancel: vi.fn(), promise: Promise.resolve() });
     const pdf = createPdf(page);
@@ -206,6 +304,7 @@ describe("renderPdfToPngs lifecycle", () => {
 
     await expect(renderPromise).rejects.toMatchObject({ name: "AbortError" });
     await flushPromises();
+    expect(page.cleanup).toHaveBeenCalledTimes(1);
     expect(destroy).toHaveBeenCalledTimes(1);
   });
 

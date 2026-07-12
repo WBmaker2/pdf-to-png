@@ -35,6 +35,11 @@ const makeDeferred = <T,>(): Deferred<T> => {
   return { promise, resolve: resolvePromise };
 };
 
+const flushMicrotasks = async () => {
+  await Promise.resolve();
+  await Promise.resolve();
+};
+
 const makePngPages = (): RenderedPngPage[] => [
   {
     pageIndex: 0,
@@ -127,11 +132,42 @@ describe("App lazy operation guards", () => {
     await user.click(screen.getByRole("button", { name: "변환 취소" }));
     pdfModule.resolve({ renderPdfToPngs });
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await flushMicrotasks();
     });
 
     expect(renderPdfToPngs).not.toHaveBeenCalled();
     expect(screen.getByRole("status")).toHaveTextContent("PDF 파일을 선택해 주세요.");
+  });
+
+  it("does not render when App unmounts while the PDF module import is pending", async () => {
+    const user = userEvent.setup();
+    const pdfModule = makeDeferred<RenderPdfModule>();
+    const renderPdfToPngs = vi.fn().mockResolvedValue(makePngPages());
+    let importStarted = false;
+    const App = await loadApp({
+      pdfRenderModule: pdfModule.promise,
+      onPdfRenderImport: () => {
+        importStarted = true;
+      },
+      downloadsModule: {
+        buildDownloadBlob: vi.fn(),
+        downloadBlob: vi.fn(),
+      },
+    });
+
+    const view = render(<App />);
+    await user.upload(screen.getByLabelText("PDF 파일 선택"), createPdf());
+    fireEvent.click(screen.getByRole("button", { name: "PNG로 변환하기" }));
+    await waitFor(() => expect(importStarted).toBe(true));
+
+    view.unmount();
+    pdfModule.resolve({ renderPdfToPngs });
+    await act(async () => {
+      await flushMicrotasks();
+    });
+
+    expect(renderPdfToPngs).not.toHaveBeenCalled();
+    expect(view.container).toBeEmptyDOMElement();
   });
 
   it("does not render when file replacement wins while the PDF module import is pending", async () => {
@@ -161,7 +197,7 @@ describe("App lazy operation guards", () => {
     await screen.findByText("새자료.pdf");
     pdfModule.resolve({ renderPdfToPngs });
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await flushMicrotasks();
     });
 
     expect(renderPdfToPngs).not.toHaveBeenCalled();
@@ -199,11 +235,44 @@ describe("App lazy operation guards", () => {
       downloadBlob: vi.fn(),
     });
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await flushMicrotasks();
     });
 
     expect(buildDownloadBlob).not.toHaveBeenCalled();
     expect(screen.getByRole("status")).toHaveTextContent("PDF 파일을 선택해 주세요.");
+  });
+
+  it("does not build a download when App unmounts while the download module import is pending", async () => {
+    const user = userEvent.setup();
+    const renderPdfToPngs = vi.fn().mockResolvedValue(makePngPages());
+    const downloadsModule = makeDeferred<DownloadsModule>();
+    const buildDownloadBlob = vi.fn();
+    const downloadBlob = vi.fn();
+    let importStarted = false;
+    const App = await loadApp({
+      pdfRenderModule: { renderPdfToPngs },
+      downloadsModule: downloadsModule.promise,
+      onDownloadsImport: () => {
+        importStarted = true;
+      },
+    });
+
+    const view = render(<App />);
+    await user.upload(screen.getByLabelText("PDF 파일 선택"), createPdf());
+    await user.click(screen.getByRole("button", { name: "PNG로 변환하기" }));
+    await screen.findByText("수업자료-00.png");
+    fireEvent.click(screen.getByRole("button", { name: "PNG 다운로드" }));
+    await waitFor(() => expect(importStarted).toBe(true));
+
+    view.unmount();
+    downloadsModule.resolve({ buildDownloadBlob, downloadBlob });
+    await act(async () => {
+      await flushMicrotasks();
+    });
+
+    expect(buildDownloadBlob).not.toHaveBeenCalled();
+    expect(downloadBlob).not.toHaveBeenCalled();
+    expect(view.container).toBeEmptyDOMElement();
   });
 
   it("does not build a download when file replacement wins while the download module import is pending", async () => {
@@ -236,7 +305,7 @@ describe("App lazy operation guards", () => {
       downloadBlob: vi.fn(),
     });
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await flushMicrotasks();
     });
 
     expect(buildDownloadBlob).not.toHaveBeenCalled();

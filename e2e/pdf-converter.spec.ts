@@ -163,13 +163,38 @@ test("converts a real three-page PDF and downloads its PNG ZIP", async ({ page }
 
   await snapshotState("before-download");
   const downloadPromise = page.waitForEvent("download");
+  let navigationOccurred = false;
   const handleFrameNavigated = (frame: import("@playwright/test").Frame) => {
     if (frame === page.mainFrame()) {
+      navigationOccurred = true;
       console.log(`[e2e navigation] url=${frame.url()}`);
     }
   };
+  const handleAnchorConsole = (message: import("@playwright/test").ConsoleMessage) => {
+    if (message.text().startsWith("[e2e anchor]")) {
+      console.log(message.text());
+    }
+  };
   page.on("framenavigated", handleFrameNavigated);
+  page.on("console", handleAnchorConsole);
   try {
+    await page.evaluate(() => {
+      const state = globalThis as typeof globalThis & {
+        __e2eAnchorClickOriginal?: typeof HTMLAnchorElement.prototype.click;
+        __e2eAnchorClickWrapper?: typeof HTMLAnchorElement.prototype.click;
+      };
+      const originalClick = HTMLAnchorElement.prototype.click;
+      const wrappedClick = function (this: HTMLAnchorElement) {
+        console.log(
+          `[e2e anchor] href=${JSON.stringify(this.href)} download=${JSON.stringify(this.download)} connected=${this.isConnected} target=${JSON.stringify(this.target)} rel=${JSON.stringify(this.rel)}`,
+        );
+        return originalClick.call(this);
+      };
+
+      state.__e2eAnchorClickOriginal = originalClick;
+      state.__e2eAnchorClickWrapper = wrappedClick;
+      HTMLAnchorElement.prototype.click = wrappedClick;
+    });
     await downloadButton.click();
     try {
       await expect(statusMessage).toBeVisible({ timeout: 15_000 });
@@ -192,7 +217,28 @@ test("converts a real three-page PDF and downloads its PNG ZIP", async ({ page }
     expect(await download.failure()).toBeNull();
     expect(download.suggestedFilename()).toBe("sample-png-1080px.zip");
   } finally {
-    page.off("framenavigated", handleFrameNavigated);
+    try {
+      if (!navigationOccurred) {
+        await page.evaluate(() => {
+          const state = globalThis as typeof globalThis & {
+            __e2eAnchorClickOriginal?: typeof HTMLAnchorElement.prototype.click;
+            __e2eAnchorClickWrapper?: typeof HTMLAnchorElement.prototype.click;
+          };
+
+          if (
+            state.__e2eAnchorClickOriginal &&
+            HTMLAnchorElement.prototype.click === state.__e2eAnchorClickWrapper
+          ) {
+            HTMLAnchorElement.prototype.click = state.__e2eAnchorClickOriginal;
+          }
+          delete state.__e2eAnchorClickOriginal;
+          delete state.__e2eAnchorClickWrapper;
+        });
+      }
+    } finally {
+      page.off("console", handleAnchorConsole);
+      page.off("framenavigated", handleFrameNavigated);
+    }
   }
   expect(consoleErrors).toEqual([]);
   expect(pageErrors).toEqual([]);

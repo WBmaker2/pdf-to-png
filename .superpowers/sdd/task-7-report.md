@@ -148,3 +148,31 @@ exit code: 0
 ```
 
 The first non-escalated Chromium launch stopped before test execution with macOS `MachPortRendezvousServer` permission denied. The same command completed successfully with the required permission-expanded execution above.
+
+## Task 7 Reviewer Finding Follow-up
+
+- Updated the PNG natural-dimension assertion to retry with Playwright `expect.poll` while preserving all three `835 x 1080` expectations and their order.
+- No fixed sleeps were added.
+
+## Exact Verification Evidence
+
+```text
+$ npm run test:e2e -- --project=chromium
+Running 2 tests using 1 worker
+2 passed (3.3s)
+exit code: 0
+
+$ npm test -- --run
+Test Files  12 passed (12)
+Tests  77 passed (77)
+exit code: 0
+
+$ npm run lint
+> tsc -b --noEmit
+exit code: 0
+
+$ git diff --check
+exit code: 0
+```
+
+Reviewer-finding follow-up commit: `8f0f8d5` (`test: wait for PNG preview dimensions`)

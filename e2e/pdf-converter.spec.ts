@@ -132,27 +132,68 @@ test("converts a real three-page PDF and downloads its PNG ZIP", async ({ page }
 
   const downloadButton = page.getByRole("button", { name: "ZIP 다운로드" });
   const statusMessage = page.locator(".status-message");
+  const snapshotState = async (label: string) => {
+    const snapshot = await page.evaluate(() => {
+      const normalize = (value: string | null) => value?.replace(/\s+/g, " ").trim() || "<none>";
+      const summarize = (selector: string) => {
+        const elements = Array.from(document.querySelectorAll<HTMLElement>(selector));
+        return {
+          count: elements.length,
+          text: elements.map((element) => normalize(element.textContent)),
+        };
+      };
+      const downloadButton = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
+        (button) => /ZIP|다운로드/.test(button.textContent ?? ""),
+      );
+      const root = document.querySelector("#root");
+
+      return {
+        url: window.location.href,
+        statusMessage: summarize(".status-message"),
+        selectedFile: summarize(".selected-file"),
+        resultCardCount: document.querySelectorAll(".result-card").length,
+        downloadButtonText: downloadButton ? normalize(downloadButton.textContent) : null,
+        appShellCount: document.querySelectorAll(".app-shell").length,
+        rootChildren: root?.children.length ?? 0,
+      };
+    });
+    console.log(`[e2e state] ${label}=${JSON.stringify(snapshot)}`);
+    return snapshot;
+  };
+
+  await snapshotState("before-download");
   const downloadPromise = page.waitForEvent("download");
-  await downloadButton.click();
+  const handleFrameNavigated = (frame: import("@playwright/test").Frame) => {
+    if (frame === page.mainFrame()) {
+      console.log(`[e2e navigation] url=${frame.url()}`);
+    }
+  };
+  page.on("framenavigated", handleFrameNavigated);
   try {
-    await expect(statusMessage).toBeVisible({ timeout: 15_000 });
-  } catch (error) {
-    const normalize = (value: string | null) => value?.replace(/\s+/g, " ").trim() || "<none>";
+    await downloadButton.click();
+    try {
+      await expect(statusMessage).toBeVisible({ timeout: 15_000 });
+    } catch (error) {
+      const normalize = (value: string | null) => value?.replace(/\s+/g, " ").trim() || "<none>";
+      console.log(
+        `[e2e diagnostics] download-status-timeout button=${JSON.stringify(normalize(await downloadButton.textContent()))} status=${JSON.stringify(normalize(await statusMessage.textContent()))} consoleErrors=${JSON.stringify(consoleErrors.map(normalize))} pageErrors=${JSON.stringify(pageErrors.map(normalize))}`,
+      );
+      throw error;
+    }
+    await snapshotState("after-download-click");
+    const normalizedStatusText = (await statusMessage.textContent())?.replace(/\s+/g, " ").trim() ?? "";
     console.log(
-      `[e2e diagnostics] download-status-timeout button=${JSON.stringify(normalize(await downloadButton.textContent()))} status=${JSON.stringify(normalize(await statusMessage.textContent()))} consoleErrors=${JSON.stringify(consoleErrors.map(normalize))} pageErrors=${JSON.stringify(pageErrors.map(normalize))}`,
+      `[e2e timing] download-status-ms=${Math.round(performance.now() - startedAt)} text=${normalizedStatusText}`,
     );
-    throw error;
+    await expect(statusMessage).toContainText("sample-png-1080px.zip 다운로드를 시작했습니다.");
+    const download = await downloadPromise;
+    await download.path();
+    console.log(`[e2e timing] download-ready-ms=${Math.round(performance.now() - startedAt)}`);
+    expect(await download.failure()).toBeNull();
+    expect(download.suggestedFilename()).toBe("sample-png-1080px.zip");
+  } finally {
+    page.off("framenavigated", handleFrameNavigated);
   }
-  const normalizedStatusText = (await statusMessage.textContent())?.replace(/\s+/g, " ").trim() ?? "";
-  console.log(
-    `[e2e timing] download-status-ms=${Math.round(performance.now() - startedAt)} text=${normalizedStatusText}`,
-  );
-  await expect(statusMessage).toContainText("sample-png-1080px.zip 다운로드를 시작했습니다.");
-  const download = await downloadPromise;
-  await download.path();
-  console.log(`[e2e timing] download-ready-ms=${Math.round(performance.now() - startedAt)}`);
-  expect(await download.failure()).toBeNull();
-  expect(download.suggestedFilename()).toBe("sample-png-1080px.zip");
   expect(consoleErrors).toEqual([]);
   expect(pageErrors).toEqual([]);
 });

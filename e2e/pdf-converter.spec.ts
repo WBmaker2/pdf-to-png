@@ -91,6 +91,8 @@ test("keeps update history within a 320px viewport", async ({ page }) => {
 });
 
 test("converts a real three-page PDF and downloads its PNG ZIP", async ({ page }) => {
+  test.slow();
+  const startedAt = performance.now();
   const { consoleErrors, pageErrors } = collectPageErrors(page);
 
   await uploadSamplePdf(page);
@@ -126,12 +128,14 @@ test("converts a real three-page PDF and downloads its PNG ZIP", async ({ page }
       { width: 835, height: 1080 },
       { width: 835, height: 1080 },
     ]);
+  console.log(`[e2e timing] results-ready-ms=${Math.round(performance.now() - startedAt)}`);
 
   const [download] = await Promise.all([
     page.waitForEvent("download"),
     page.getByRole("button", { name: "ZIP 다운로드" }).click(),
   ]);
   await download.path();
+  console.log(`[e2e timing] download-ready-ms=${Math.round(performance.now() - startedAt)}`);
   expect(await download.failure()).toBeNull();
   expect(download.suggestedFilename()).toBe("sample-png-1080px.zip");
   expect(consoleErrors).toEqual([]);

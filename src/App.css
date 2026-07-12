@@ -622,3 +622,29 @@ progress {
     padding-left: 12px;
   }
 }
+
+@media (max-width: 360px) {
+  .app-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-header-main {
+    display: contents;
+  }
+
+  .app-header h1 {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .app-header p {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .app-header .update-history-trigger {
+    grid-column: 1;
+    grid-row: 3;
+    justify-self: end;
+  }
+}

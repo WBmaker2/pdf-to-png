@@ -130,6 +130,6 @@ export const downloadBlob = (download: DownloadBlob): void => {
     link.click();
   } finally {
     link.remove();
-    URL.revokeObjectURL(objectUrl);
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
   }
 };

@@ -49,6 +49,8 @@ const stubObjectUrlApis = () => {
 };
 
 afterEach(() => {
+  vi.clearAllTimers();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   Object.defineProperty(URL, "createObjectURL", {
     configurable: true,
@@ -190,25 +192,40 @@ describe("download packager", () => {
     await expect(resultPromise).rejects.toThrow("ZIP 파일 생성에 실패했습니다.");
   });
 
-  it("clicks and cleans up the anchor for direct downloads", () => {
+  it("clicks and removes the anchor before scheduled object URL cleanup", () => {
     const blob = new Blob(["image"], { type: "image/png" });
-    const { createObjectURL, objectUrl, revokeObjectURL } = stubObjectUrlApis();
+    const { createObjectURL, revokeObjectURL } = stubObjectUrlApis();
     const click = vi
       .spyOn(HTMLAnchorElement.prototype, "click")
       .mockImplementation(() => undefined);
+    vi.useFakeTimers();
 
     downloadBlob({ fileName: "자료-00.png", blob });
 
     expect(createObjectURL).toHaveBeenCalledWith(blob);
     expect(click).toHaveBeenCalledTimes(1);
-    expect(revokeObjectURL).toHaveBeenCalledWith(objectUrl);
+    expect(revokeObjectURL).not.toHaveBeenCalled();
     expect(document.body.querySelectorAll("a")).toHaveLength(0);
   });
 
-  it("still cleans up the anchor and object URL when click throws", () => {
+  it("revokes the object URL exactly once after scheduled cleanup", () => {
+    const blob = new Blob(["image"], { type: "image/png" });
+    const { objectUrl, revokeObjectURL } = stubObjectUrlApis();
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+
+    downloadBlob({ fileName: "자료-00.png", blob });
+    vi.runAllTimers();
+
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith(objectUrl);
+  });
+
+  it("still cleans up the anchor and schedules object URL cleanup when click throws", () => {
     const blob = new Blob(["image"], { type: "image/png" });
     const { objectUrl, revokeObjectURL } = stubObjectUrlApis();
     const clickError = new Error("click failed");
+    vi.useFakeTimers();
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {
       throw clickError;
     });
@@ -221,7 +238,12 @@ describe("download packager", () => {
     }
 
     expect(thrownError).toBe(clickError);
-    expect(revokeObjectURL).toHaveBeenCalledWith(objectUrl);
+    expect(revokeObjectURL).not.toHaveBeenCalled();
     expect(document.body.querySelectorAll("a")).toHaveLength(0);
+
+    vi.runAllTimers();
+
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith(objectUrl);
   });
 });

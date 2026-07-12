@@ -91,8 +91,6 @@ test("keeps update history within a 320px viewport", async ({ page }) => {
 });
 
 test("converts a real three-page PDF and downloads its PNG ZIP", async ({ page }) => {
-  test.slow();
-  const startedAt = performance.now();
   const { consoleErrors, pageErrors } = collectPageErrors(page);
 
   await uploadSamplePdf(page);
@@ -128,118 +126,15 @@ test("converts a real three-page PDF and downloads its PNG ZIP", async ({ page }
       { width: 835, height: 1080 },
       { width: 835, height: 1080 },
     ]);
-  console.log(`[e2e timing] results-ready-ms=${Math.round(performance.now() - startedAt)}`);
 
-  const downloadButton = page.getByRole("button", { name: "ZIP 다운로드" });
-  const statusMessage = page.locator(".status-message");
-  const snapshotState = async (label: string) => {
-    const snapshot = await page.evaluate(() => {
-      const normalize = (value: string | null) => value?.replace(/\s+/g, " ").trim() || "<none>";
-      const summarize = (selector: string) => {
-        const elements = Array.from(document.querySelectorAll<HTMLElement>(selector));
-        return {
-          count: elements.length,
-          text: elements.map((element) => normalize(element.textContent)),
-        };
-      };
-      const downloadButton = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
-        (button) => /ZIP|다운로드/.test(button.textContent ?? ""),
-      );
-      const root = document.querySelector("#root");
-
-      return {
-        url: window.location.href,
-        statusMessage: summarize(".status-message"),
-        selectedFile: summarize(".selected-file"),
-        resultCardCount: document.querySelectorAll(".result-card").length,
-        downloadButtonText: downloadButton ? normalize(downloadButton.textContent) : null,
-        appShellCount: document.querySelectorAll(".app-shell").length,
-        rootChildren: root?.children.length ?? 0,
-      };
-    });
-    console.log(`[e2e state] ${label}=${JSON.stringify(snapshot)}`);
-    return snapshot;
-  };
-
-  await snapshotState("before-download");
   const downloadPromise = page.waitForEvent("download");
-  let navigationOccurred = false;
-  const handleFrameNavigated = (frame: import("@playwright/test").Frame) => {
-    if (frame === page.mainFrame()) {
-      navigationOccurred = true;
-      console.log(`[e2e navigation] url=${frame.url()}`);
-    }
-  };
-  const handleAnchorConsole = (message: import("@playwright/test").ConsoleMessage) => {
-    if (message.text().startsWith("[e2e anchor]")) {
-      console.log(message.text());
-    }
-  };
-  page.on("framenavigated", handleFrameNavigated);
-  page.on("console", handleAnchorConsole);
-  try {
-    await page.evaluate(() => {
-      const state = globalThis as typeof globalThis & {
-        __e2eAnchorClickOriginal?: typeof HTMLAnchorElement.prototype.click;
-        __e2eAnchorClickWrapper?: typeof HTMLAnchorElement.prototype.click;
-      };
-      const originalClick = HTMLAnchorElement.prototype.click;
-      const wrappedClick = function (this: HTMLAnchorElement) {
-        console.log(
-          `[e2e anchor] href=${JSON.stringify(this.href)} download=${JSON.stringify(this.download)} connected=${this.isConnected} target=${JSON.stringify(this.target)} rel=${JSON.stringify(this.rel)}`,
-        );
-        return originalClick.call(this);
-      };
-
-      state.__e2eAnchorClickOriginal = originalClick;
-      state.__e2eAnchorClickWrapper = wrappedClick;
-      HTMLAnchorElement.prototype.click = wrappedClick;
-    });
-    await downloadButton.click();
-    try {
-      await expect(statusMessage).toBeVisible({ timeout: 15_000 });
-    } catch (error) {
-      const normalize = (value: string | null) => value?.replace(/\s+/g, " ").trim() || "<none>";
-      console.log(
-        `[e2e diagnostics] download-status-timeout button=${JSON.stringify(normalize(await downloadButton.textContent()))} status=${JSON.stringify(normalize(await statusMessage.textContent()))} consoleErrors=${JSON.stringify(consoleErrors.map(normalize))} pageErrors=${JSON.stringify(pageErrors.map(normalize))}`,
-      );
-      throw error;
-    }
-    await snapshotState("after-download-click");
-    const normalizedStatusText = (await statusMessage.textContent())?.replace(/\s+/g, " ").trim() ?? "";
-    console.log(
-      `[e2e timing] download-status-ms=${Math.round(performance.now() - startedAt)} text=${normalizedStatusText}`,
-    );
-    await expect(statusMessage).toContainText("sample-png-1080px.zip 다운로드를 시작했습니다.");
-    const download = await downloadPromise;
-    await download.path();
-    console.log(`[e2e timing] download-ready-ms=${Math.round(performance.now() - startedAt)}`);
-    expect(await download.failure()).toBeNull();
-    expect(download.suggestedFilename()).toBe("sample-png-1080px.zip");
-  } finally {
-    try {
-      if (!navigationOccurred) {
-        await page.evaluate(() => {
-          const state = globalThis as typeof globalThis & {
-            __e2eAnchorClickOriginal?: typeof HTMLAnchorElement.prototype.click;
-            __e2eAnchorClickWrapper?: typeof HTMLAnchorElement.prototype.click;
-          };
-
-          if (
-            state.__e2eAnchorClickOriginal &&
-            HTMLAnchorElement.prototype.click === state.__e2eAnchorClickWrapper
-          ) {
-            HTMLAnchorElement.prototype.click = state.__e2eAnchorClickOriginal;
-          }
-          delete state.__e2eAnchorClickOriginal;
-          delete state.__e2eAnchorClickWrapper;
-        });
-      }
-    } finally {
-      page.off("console", handleAnchorConsole);
-      page.off("framenavigated", handleFrameNavigated);
-    }
-  }
+  const statusMessage = page.locator(".status-message");
+  await page.getByRole("button", { name: "ZIP 다운로드" }).click();
+  await expect(statusMessage).toHaveText("sample-png-1080px.zip 다운로드를 시작했습니다.");
+  const download = await downloadPromise;
+  await download.path();
+  expect(await download.failure()).toBeNull();
+  expect(download.suggestedFilename()).toBe("sample-png-1080px.zip");
   expect(consoleErrors).toEqual([]);
   expect(pageErrors).toEqual([]);
 });

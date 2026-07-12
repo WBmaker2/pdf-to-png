@@ -3,6 +3,7 @@ import { ConversionPanel } from "./components/ConversionPanel";
 import { FileDropzone } from "./components/FileDropzone";
 import { ResultList } from "./components/ResultList";
 import { StatusNotice, type StatusTone } from "./components/StatusNotice";
+import UpdateHistoryDialog from "./components/UpdateHistoryDialog";
 import {
   getConversionErrorMessage,
   getDownloadErrorMessage,
@@ -214,7 +215,10 @@ export default function App() {
   return (
     <main className="app-shell">
       <header className="app-header">
-        <h1 id="app-title">PDF PNG 변환기</h1>
+        <div className="app-header-main">
+          <h1 id="app-title">PDF PNG 변환기</h1>
+          <UpdateHistoryDialog />
+        </div>
         <p>긴 변 1080px · 브라우저 내 처리</p>
       </header>
 

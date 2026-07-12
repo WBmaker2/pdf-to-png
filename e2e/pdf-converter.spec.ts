@@ -27,6 +27,60 @@ async function uploadSamplePdf(page: import("@playwright/test").Page) {
   await page.getByRole("button", { name: "PNG로 변환하기" }).click();
 }
 
+test("opens update history and restores trigger focus after Escape", async ({ page }) => {
+  const { consoleErrors, pageErrors } = collectPageErrors(page);
+  await page.goto("/");
+
+  const trigger = page.getByRole("button", { name: "업데이트 내역" });
+  await trigger.click();
+
+  const dialog = page.getByRole("dialog", { name: "업데이트 내역" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("2026-07-12");
+  await expect(dialog).toContainText("안정성 및 사용성 개선");
+  await expect(dialog).toContainText("2026-05-03");
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(trigger).toBeFocused();
+  expect(consoleErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
+test("keeps update history within a 320px viewport", async ({ page }) => {
+  const { consoleErrors, pageErrors } = collectPageErrors(page);
+  await page.setViewportSize({ width: 320, height: 844 });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "업데이트 내역" }).click();
+  const dialog = page.getByRole("dialog", { name: "업데이트 내역" });
+  await expect(dialog).toBeVisible();
+  expect(
+    await dialog.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return (
+        rect.left >= 0 &&
+        rect.top >= 0 &&
+        rect.right <= window.innerWidth &&
+        rect.bottom <= window.innerHeight
+      );
+    }),
+  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(
+    await page.evaluate(() =>
+      Array.from(document.querySelectorAll<HTMLElement>("body *"))
+        .filter((element) => {
+          const rect = element.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 && (rect.left < 0 || rect.right > innerWidth);
+        })
+        .map((element) => element.className || element.tagName),
+    ),
+  ).toEqual([]);
+  expect(consoleErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
 test("converts a real three-page PDF and downloads its PNG ZIP", async ({ page }) => {
   const { consoleErrors, pageErrors } = collectPageErrors(page);
 
